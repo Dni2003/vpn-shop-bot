@@ -27,7 +27,7 @@ async def admin_panel(message: Message):
 
 # دریافت لیست کاربران
 async def admin_users(callback: types.CallbackQuery):
-    async with get_db() as db:
+    async with await get_db() as db:
         cursor = await db.execute("SELECT id, username, first_name, balance FROM users LIMIT 10")
         users = await cursor.fetchall()
     
@@ -40,7 +40,7 @@ async def admin_users(callback: types.CallbackQuery):
 
 # دریافت آمار
 async def admin_stats(callback: types.CallbackQuery):
-    async with get_db() as db:
+    async with await get_db() as db:
         cursor = await db.execute("SELECT COUNT(*) FROM users")
         total_users = (await cursor.fetchone())[0]
         
