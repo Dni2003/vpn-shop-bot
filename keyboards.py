@@ -40,3 +40,13 @@ def buy_plans_keyboard():
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_user_count")]
     ])
     return keyboard
+
+# ========== کیبورد پنل ادمین (این رو فراموش کرده بودم!) ==========
+def admin_panel_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 مدیریت کاربران", callback_data="admin_users"),
+         InlineKeyboardButton(text="📊 آمار فروش", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="💰 مدیریت تراکنش‌ها", callback_data="admin_transactions"),
+         InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")],
+        [InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")]
+    ])
