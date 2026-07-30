@@ -1,27 +1,28 @@
 import asyncio
 import logging
 import sys
+import aiosqlite
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
 from config import config
-from database import init_db, get_db
-from admin import is_admin, admin_panel  # <--- تابع ادمین رو از admin.py import کن
+from database import init_db
+from admin import is_admin
 from keyboards import main_menu_keyboard, buy_plans_keyboard, admin_panel_keyboard
 
-# تنظیم لاگ
 logging.basicConfig(level=logging.INFO)
 
-# راه‌اندازی ربات
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
+
+DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 # ---------- دستورات عمومی ----------
 @dp.message(Command("start"))
 async def start_command(message: Message):
     user = message.from_user
-    # ثبت نام خودکار کاربر در دیتابیس
-    async with await get_db() as db:
+    # ثبت کاربر با اتصال مستقیم
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR IGNORE INTO users (id, username, first_name, last_name) VALUES (?, ?, ?, ?)",
             (user.id, user.username, user.first_name, user.last_name)
@@ -56,7 +57,7 @@ async def buy_command(message: Message):
 @dp.message(Command("balance"))
 async def balance_command(message: Message):
     user_id = message.from_user.id
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
         result = await cursor.fetchone()
         balance = result[0] if result else 0
