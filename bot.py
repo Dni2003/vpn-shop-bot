@@ -21,7 +21,6 @@ DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 @dp.message(Command("start"))
 async def start_command(message: Message):
     user = message.from_user
-    # ثبت کاربر با اتصال مستقیم
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR IGNORE INTO users (id, username, first_name, last_name) VALUES (?, ?, ?, ?)",
@@ -76,6 +75,23 @@ async def support_command(message: Message):
         "@Dni2003\n\n"
         "⏰ پاسخگویی: ۹ صبح تا ۱۲ شب"
     )
+
+# ---------- مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ----------
+@dp.message(lambda message: message.text == "🛒 خرید اشتراک")
+async def handle_buy_button(message: Message):
+    await buy_command(message)
+
+@dp.message(lambda message: message.text == "💰 کیف پول")
+async def handle_balance_button(message: Message):
+    await balance_command(message)
+
+@dp.message(lambda message: message.text == "📞 پشتیبانی")
+async def handle_support_button(message: Message):
+    await support_command(message)
+
+@dp.message(lambda message: message.text == "ℹ️ راهنما")
+async def handle_help_button(message: Message):
+    await help_command(message)
 
 # ---------- دستورات ادمین ----------
 @dp.message(Command("admin"))
