@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from config import config
 from database import init_db
+from admin import admin_panel, admin_users, admin_stats, admin_add_balance, is_admin
 
 # تنظیم لاگ
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +80,13 @@ async def main():
     # شروع ربات
     print("🤖 ربات در حال اجراست...")
     await dp.start_polling(bot)
+    
+@dp.message(Command("admin"))
+async def admin_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
+        return
+    await admin_panel(message)
 
 if __name__ == "__main__":
     asyncio.run(main())
