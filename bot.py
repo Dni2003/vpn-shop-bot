@@ -8,7 +8,7 @@ from aiogram.types import Message
 from config import config
 from database import init_db
 from admin import is_admin
-from keyboards import main_menu_keyboard, buy_plans_keyboard, admin_panel_keyboard
+from keyboards import main_menu_keyboard, buy_main_keyboard, buy_user_count_keyboard, buy_plans_keyboard, admin_panel_keyboard
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,9 +48,8 @@ async def help_command(message: Message):
 @dp.message(Command("buy"))
 async def buy_command(message: Message):
     await message.answer(
-        "🛒 لیست پلن‌های VPN:\n\n"
-        "یکی از گزینه‌های زیر رو انتخاب کن:",
-        reply_markup=buy_plans_keyboard()
+        "📅 مدت اشتراک خود را انتخاب کنید:",
+        reply_markup=buy_main_keyboard()
     )
 
 @dp.message(Command("balance"))
@@ -93,6 +92,79 @@ async def handle_support_button(message: Message):
 async def handle_help_button(message: Message):
     await help_command(message)
 
+# ---------- مدیریت خرید (۳ مرحله) ----------
+# مرحله ۱: انتخاب مدت
+@dp.callback_query(lambda c: c.data == "select_duration_1m")
+async def select_duration(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
+        reply_markup=buy_user_count_keyboard()
+    )
+    await callback.answer()
+
+# مرحله ۲: انتخاب تعداد کاربر
+@dp.callback_query(lambda c: c.data == "select_user_1")
+async def select_user_count(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "📋 لیست تعرفه‌های ۱ ماهه / ۱ کاربره:\n\n"
+        "یکی از گزینه‌های زیر رو انتخاب کن:",
+        reply_markup=buy_plans_keyboard()
+    )
+    await callback.answer()
+
+# مرحله ۳: نمایش تعرفه انتخاب شده
+@dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
+async def buy_callback(callback: types.CallbackQuery):
+    data_parts = callback.data.split("_")
+    if len(data_parts) < 4:
+        await callback.answer("❌ اطلاعات ناقص است.", show_alert=True)
+        return
+    
+    price = data_parts[2].replace("k", "000")
+    volume = data_parts[3].replace("gb", "GB")
+    
+    try:
+        price_int = int(price)
+    except:
+        await callback.answer("❌ خطا در پردازش قیمت.", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        f"✅ تعرفه انتخاب شده:\n\n"
+        f"📅 مدت: ۱ ماهه\n"
+        f"👤 تعداد کاربر: ۱ کاربره\n"
+        f"💰 قیمت: {price_int:,} تومان\n"
+        f"📊 حجم: {volume}\n\n"
+        f"🔜 به زودی امکان خرید و پرداخت فعال می‌شود."
+    )
+    await callback.answer()
+
+# دکمه‌های بازگشت
+@dp.callback_query(lambda c: c.data == "back_to_duration")
+async def back_to_duration(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "📅 مدت اشتراک خود را انتخاب کنید:",
+        reply_markup=buy_main_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "back_to_user_count")
+async def back_to_user_count(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
+        reply_markup=buy_user_count_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "back_to_main")
+async def back_to_main(callback: types.CallbackQuery):
+    await callback.message.delete()
+    await callback.message.answer(
+        "🔙 به منوی اصلی برگشتید.",
+        reply_markup=main_menu_keyboard()
+    )
+    await callback.answer()
+
 # ---------- دستورات ادمین ----------
 @dp.message(Command("admin"))
 async def admin_command(message: Message):
@@ -104,7 +176,6 @@ async def admin_command(message: Message):
         reply_markup=admin_panel_keyboard()
     )
 
-# ---------- مدیریت دکمه‌های اینلاین ----------
 @dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
 async def admin_callback(callback: types.CallbackQuery):
     if not await is_admin(callback.from_user.id):
