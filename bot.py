@@ -1,3 +1,4 @@
+from keyboards import main_menu_keyboard, buy_plans_keyboard, admin_panel_keyboard
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types
@@ -18,15 +19,19 @@ dp = Dispatcher()
 @dp.message(Command("start"))
 async def start_command(message: Message):
     user = message.from_user
+    # ثبت کاربر در دیتابیس
+    async with await get_db() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO users (id, username, first_name, last_name) VALUES (?, ?, ?, ?)",
+            (user.id, user.username, user.first_name, user.last_name)
+        )
+        await db.commit()
+    
     await message.answer(
         f"👋 سلام {user.first_name}!\n"
-        "به ربات فروش VPN خوش اومدی!\n\n"
-        "📌 دستورات موجود:\n"
-        "/start - شروع مجدد\n"
-        "/help - راهنما\n"
-        "/buy - خرید اشتراک VPN\n"
-        "/balance - موجودی کیف پول\n"
-        "/support - پشتیبانی"
+        "به ربات فروش VPN خوش اومدی! 🌟\n\n"
+        "از دکمه‌های زیر استفاده کن:",
+        reply_markup=main_menu_keyboard()  # کیبورد شیشه‌ای
     )
 
 # دستور /help
@@ -45,11 +50,8 @@ async def help_command(message: Message):
 async def buy_command(message: Message):
     await message.answer(
         "🛒 لیست پلن‌های VPN:\n\n"
-        "1️⃣ ۱ ماهه - ۱۰۰,۰۰۰ تومان\n"
-        "2️⃣ ۳ ماهه - ۲۵۰,۰۰۰ تومان\n"
-        "3️⃣ ۶ ماهه - ۴۵۰,۰۰۰ تومان\n"
-        "4️⃣ ۱ ساله - ۷۵۰,۰۰۰ تومان\n\n"
-        "🔜 به زودی امکان خرید مستقیم فعال می‌شه!"
+        "یکی از گزینه‌های زیر رو انتخاب کن:",
+        reply_markup=buy_plans_keyboard()
     )
 
 # دستور /balance
