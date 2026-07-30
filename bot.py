@@ -88,5 +88,20 @@ async def admin_command(message: Message):
         return
     await admin_panel(message)
 
+@dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
+async def admin_callback(callback: types.CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
+        return
+    
+    if callback.data == "admin_users":
+        await admin_users(callback)
+    elif callback.data == "admin_stats":
+        await admin_stats(callback)
+    elif callback.data == "admin_add_balance":
+        await admin_add_balance(callback)
+    else:
+        await callback.answer("این بخش در حال توسعه است.")
+
 if __name__ == "__main__":
     asyncio.run(main())
