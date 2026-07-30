@@ -31,9 +31,12 @@ async def admin_users(callback: types.CallbackQuery):
         cursor = await db.execute("SELECT id, username, first_name, balance FROM users LIMIT 10")
         users = await cursor.fetchall()
     
-    text = "👥 لیست کاربران:\n\n"
-    for user in users:
-        text += f"🆔 {user[0]} | {user[1] or 'بدون نام کاربری'} | موجودی: {user[3]} تومان\n"
+    if not users:
+        text = "👥 هیچ کاربری در دیتابیس ثبت نشده است."
+    else:
+        text = "👥 لیست کاربران (۱۰ نفر آخر):\n\n"
+        for user in users:
+            text += f"🆔 {user[0]} | {user[1] or 'بدون نام کاربری'} | موجودی: {user[3]} تومان\n"
     
     await callback.message.edit_text(text)
     await callback.answer()
