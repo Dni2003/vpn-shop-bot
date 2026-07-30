@@ -20,7 +20,7 @@ async def init_db():
                 is_admin BOOLEAN DEFAULT 0
             )
         """)
-        
+        # نسخه ۲ - رفع خطای threading
         # جدول تراکنش‌ها
         await db.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
