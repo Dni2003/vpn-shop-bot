@@ -1,10 +1,11 @@
 import aiosqlite
-from datetime import datetime
 from config import config
 
+# مسیر فایل دیتابیس
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 async def init_db():
+    """ایجاد جدول‌ها (فقط یک بار اجرا می‌شود)"""
     async with aiosqlite.connect(DB_PATH) as db:
         # جدول کاربران
         await db.execute("""
@@ -50,4 +51,7 @@ async def init_db():
         await db.commit()
 
 async def get_db():
+    """این تابع هر بار که صدا زده می‌شود، یک اتصال تازه و جدید به دیتابیس برمی‌گرداند.
+    برای استفاده از آن حتماً باید از 'async with await get_db() as db' استفاده کنید.
+    """
     return await aiosqlite.connect(DB_PATH)
