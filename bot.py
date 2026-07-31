@@ -116,7 +116,7 @@ async def charge_command(message: Message, state: FSMContext):
     await message.answer(
         "💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
         "مثلاً: 100000\n\n"
-        "🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان"
+        "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"  # تغییر داده شد
     )
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
@@ -145,8 +145,8 @@ async def handle_help_button(message: Message):
 async def process_charge_amount(message: Message, state: FSMContext):
     try:
         amount = int(message.text)
-        if amount < 10000:
-            await message.answer("❌ حداقل مبلغ شارژ ۱۰,۰۰۰ تومان است. لطفاً مجدداً وارد کن.")
+        if amount < 100000:  # تغییر داده شد: حداقل مبلغ ۱۰۰,۰۰۰ تومان
+            await message.answer("❌ حداقل مبلغ شارژ ۱۰۰,۰۰۰ تومان است. لطفاً مجدداً وارد کن.")
             return
         
         await state.update_data(amount=amount)
@@ -154,7 +154,8 @@ async def process_charge_amount(message: Message, state: FSMContext):
         await message.answer(
             f"✅ مبلغ {amount:,} تومان ثبت شد.\n\n"
             f"🏦 شماره کارت جهت واریز:\n"
-            f"`{config.CARD_NUMBER}`\n\n"
+            f"`{config.CARD_NUMBER}`\n"
+            f"👤 به نام: دانیال بدری\n\n"  # اضافه شد
             "📸 لطفاً عکس رسید کارت به کارت خود را ارسال کنید.\n"
             "⚠️ فقط عکس (JPEG/PNG) پذیرفته می‌شود."
         )
