@@ -280,7 +280,7 @@ async def select_user_count(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def buy_callback(callback: CallbackQuery):
     # ========== پاسخ سریع به کاربر ==========
-    await callback.answer("✅ در حال ثبت درخواست...")
+    await callback.answer("✅ در حال بررسی درخواست...")
     
     data_parts = callback.data.split("_")
     if len(data_parts) < 4:
@@ -300,23 +300,50 @@ async def buy_callback(callback: CallbackQuery):
     plan_name = f"۱ ماهه - {volume}"
     
     try:
-        # ========== ثبت درخواست در دیتابیس ==========
+        # ========== بررسی موجودی کاربر ==========
         async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+            result = await cursor.fetchone()
+            balance = result[0] if result else 0
+        
+        # ========== اگر موجودی کافی نبود ==========
+        if balance < price_int:
+            await callback.message.edit_text(
+                f"❌ موجودی حساب شما برای خرید سرویس کافی نمی‌باشد!\n\n"
+                f"💰 موجودی فعلی: {balance:,} تومان\n"
+                f"💳 قیمت سرویس: {price_int:,} تومان\n\n"
+                f"⚠️ لطفاً ابتدا حساب خود را شارژ کنید."
+            )
+            await callback.answer()
+            return
+        
+        # ========== کسر مبلغ از موجودی ==========
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE users SET balance = balance - ? WHERE id = ?",
+                (price_int, user_id)
+            )
+            # ثبت درخواست سرویس
             await db.execute(
                 "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
                 (user_id, plan_name)
             )
+            # ثبت تراکنش
+            await db.execute(
+                "INSERT INTO transactions (user_id, amount, type, description, status) VALUES (?, ?, 'purchase', ?, 'completed')",
+                (user_id, price_int, f"خرید {plan_name}")
+            )
             await db.commit()
         
-        # ========== ارسال پیام به کاربر ==========
+        # ========== ارسال پیام موفقیت به کاربر ==========
         await callback.message.edit_text(
-            f"✅ درخواست سرویس شما با موفقیت ثبت شد!\n\n"
+            f"✅ درخواست شما برای سرویس {plan_name} ثبت شد!\n\n"
             f"📅 مدت: ۱ ماهه\n"
             f"👤 تعداد کاربر: ۱ کاربره\n"
             f"📊 حجم: {volume}\n"
-            f"💰 قیمت: {price_int:,} تومان\n\n"
-            f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد.\n"
-            f"لطفاً صبور باشید."
+            f"💰 قیمت: {price_int:,} تومان\n"
+            f"💰 موجودی جدید: {balance - price_int:,} تومان\n\n"
+            f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد."
         )
         
         # ========== ارسال نوتیفیکیشن به ادمین ==========
