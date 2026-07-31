@@ -201,10 +201,6 @@ async def handle_support_button(message: Message):
 async def handle_help_button(message: Message):
     await help_command(message)
 
-@dp.message(lambda message: message.text == "📩 درخواست سرویس")
-async def handle_service_request_button(message: Message):
-    await service_request_command(message)
-
 # ========== سیستم شارژ کیف پول (FSM) ==========
 @dp.message(ChargeStates.waiting_for_amount)
 async def process_charge_amount(message: Message, state: FSMContext):
