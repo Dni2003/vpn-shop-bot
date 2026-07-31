@@ -5,7 +5,7 @@ def main_menu_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🛒 خرید اشتراک"), KeyboardButton(text="💰 کیف پول")],
-            [KeyboardButton(text="💳 افزایش موجودی"), KeyboardButton(text="📞 پشتیبانی")],
+            [KeyboardButton(text="💳شارژ کیف پول"), KeyboardButton(text="📞 پشتیبانی")],
             [KeyboardButton(text="ℹ️ راهنما")]
         ],
         resize_keyboard=True
