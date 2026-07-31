@@ -94,7 +94,6 @@ async def process_purchase(message: Message, state: FSMContext, callback: Callba
     discount_code_id = data.get("discount_code_id")
     
     try:
-        # ========== بررسی موجودی ==========
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
             result = await cursor.fetchone()
@@ -117,7 +116,6 @@ async def process_purchase(message: Message, state: FSMContext, callback: Callba
             await state.clear()
             return
         
-        # ========== ثبت خرید ==========
         expires_at = (datetime.now() + timedelta(days=30)).isoformat()
         description = f"خرید {plan_name}"
         if discount_code:
@@ -149,7 +147,6 @@ async def process_purchase(message: Message, state: FSMContext, callback: Callba
         
         balance_new = balance - final_price
         
-        # ========== پیام موفقیت ==========
         msg = f"✅ خرید شما با موفقیت انجام شد!\n\n"
         msg += f"📅 مدت: ۱ ماهه\n"
         msg += f"📊 حجم: {volume}\n"
@@ -215,16 +212,16 @@ async def start_command(message: Message):
 async def help_command(message: Message):
     await message.answer(
         "🤖 راهنمای ربات:\n\n"
-        "1️⃣ برای خرید سرویس از دکمه 🛒 خرید فیلترشکن جدید استفاده کن.\n"
-        "2️⃣ موجودی خودت رو با 👤 حساب کاربری ببین.\n"
-        "3️⃣ برای شارژ کیف پول از 💳 شارژ کیف پول استفاده کن.\n"
-        "4️⃣ اگه سوالی داری 📞 پشتیبانی ربات رو بزن."
+        "1️⃣ برای خرید سرویس از دکمه خرید سرویس استفاده کن.\n"
+        "2️⃣ موجودی خودت رو با حساب کاربری ببین.\n"
+        "3️⃣ برای شارژ کیف پول از شارژ کیف پول استفاده کن.\n"
+        "4️⃣ اگه سوالی داری پشتیبانی رو بزن."
     )
 
 @dp.message(Command("buy"))
 async def buy_command(message: Message):
     await message.answer(
-        "📅 مدت اشتراک خود را انتخاب کنید:",
+        "مدت اشتراک خود را انتخاب کنید:",
         reply_markup=buy_main_keyboard()
     )
 
@@ -655,7 +652,7 @@ async def process_discount_code_in_purchase(message: Message, state: FSMContext)
 @dp.callback_query(lambda c: c.data == "select_duration_1m")
 async def select_duration(callback: CallbackQuery):
     await callback.message.edit_text(
-        "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
+        "تعداد کاربران مورد نظر را انتخاب کنید:",
         reply_markup=buy_user_count_keyboard()
     )
     await callback.answer()
@@ -663,7 +660,7 @@ async def select_duration(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "select_user_1")
 async def select_user_count(callback: CallbackQuery):
     await callback.message.edit_text(
-        "📋 لیست تعرفه‌های ۱ ماهه / ۱ کاربره:\n\n"
+        "لیست تعرفه‌های ۱ ماهه / ۱ کاربره:\n\n"
         "یکی از گزینه‌های زیر رو انتخاب کن:",
         reply_markup=buy_plans_keyboard()
     )
@@ -699,8 +696,8 @@ async def buy_callback(callback: CallbackQuery, state: FSMContext):
     )
     
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🎟 اعمال کد تخفیف", callback_data="apply_discount")],
-        [types.InlineKeyboardButton(text="⏭ ادامه بدون تخفیف", callback_data="no_discount")]
+        [types.InlineKeyboardButton(text="اعمال کد تخفیف", callback_data="apply_discount")],
+        [types.InlineKeyboardButton(text="ادامه بدون تخفیف", callback_data="no_discount")]
     ])
     
     await callback.message.edit_text(
@@ -731,7 +728,7 @@ async def no_discount_callback(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "back_to_duration")
 async def back_to_duration(callback: CallbackQuery):
     await callback.message.edit_text(
-        "📅 مدت اشتراک خود را انتخاب کنید:",
+        "مدت اشتراک خود را انتخاب کنید:",
         reply_markup=buy_main_keyboard()
     )
     await callback.answer()
@@ -739,7 +736,7 @@ async def back_to_duration(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "back_to_user_count")
 async def back_to_user_count(callback: CallbackQuery):
     await callback.message.edit_text(
-        "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
+        "تعداد کاربران مورد نظر را انتخاب کنید:",
         reply_markup=buy_user_count_keyboard()
     )
     await callback.answer()
