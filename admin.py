@@ -1,16 +1,15 @@
-from aiogram import types
-from aiogram.types import Message
-from config import config
 import aiosqlite
+from aiogram import types
+from aiogram.types import Message, CallbackQuery
+from config import config
 
-# مسیر دیتابیس
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
-# بررسی ادمین
+# ========== بررسی ادمین ==========
 async def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
-# پنل اصلی ادمین
+# ========== پنل اصلی ادمین (برای bot.py) ==========
 async def admin_panel(message: Message):
     user_id = message.from_user.id
     if not await is_admin(user_id):
@@ -25,8 +24,8 @@ async def admin_panel(message: Message):
     ])
     await message.answer("👋 به پنل مدیریت خوش اومدی!", reply_markup=keyboard)
 
-# دریافت لیست کاربران
-async def admin_users(callback: types.CallbackQuery):
+# ========== لیست کاربران ==========
+async def admin_users(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT id, username, first_name, balance FROM users LIMIT 10")
@@ -45,8 +44,8 @@ async def admin_users(callback: types.CallbackQuery):
         await callback.message.edit_text(f"❌ خطا در دریافت کاربران:\n{str(e)}")
         await callback.answer()
 
-# دریافت آمار
-async def admin_stats(callback: types.CallbackQuery):
+# ========== آمار ==========
+async def admin_stats(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT COUNT(*) FROM users")
@@ -65,14 +64,15 @@ async def admin_stats(callback: types.CallbackQuery):
         await callback.message.edit_text(f"❌ خطا در دریافت آمار:\n{str(e)}")
         await callback.answer()
 
-# شارژ کاربر (راهنما)
-async def admin_add_balance(callback: types.CallbackQuery):
+# ========== شارژ کاربر (راهنما) ==========
+async def admin_add_balance(callback: CallbackQuery):
     await callback.message.edit_text(
         "💰 لطفاً آیدی کاربر و مبلغ شارژ رو وارد کن:\n"
         "مثال: /add_balance 123456789 50000"
     )
+    await callback.answer()
 
-    # ========== لیست درخواست‌های شارژ ==========
+# ========== لیست درخواست‌های شارژ ==========
 async def admin_charge_requests(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -132,6 +132,3 @@ async def admin_charge_requests(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
-    
-    
-    await callback.answer()
