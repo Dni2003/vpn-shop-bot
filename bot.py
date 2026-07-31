@@ -409,6 +409,52 @@ async def cancel_command(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ عملیات لغو شد.")
 
+@dp.message(Command("my_services"))
+async def my_services_command(message: Message):
+    user_id = message.from_user.id
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT plan_name, volume, price, expires_at, status FROM service_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 5",
+            (user_id,)
+        )
+        services = await cursor.fetchall()
+    
+    if not services:
+        await message.answer("📭 شما هیچ سرویس فعال یا قبلی ندارید.")
+        return
+    
+    text = "📦 لیست سرویس‌های شما (۵ مورد آخر):\n\n"
+    for service in services:
+        plan_name, volume, price, expires_at, status = service
+        
+        # تعیین وضعیت
+        if status == "active":
+            try:
+                expire_date = datetime.fromisoformat(expires_at)
+                days_left = (expire_date - datetime.now()).days
+                if days_left < 0:
+                    status_emoji = "⛔ منقضی شده"
+                else:
+                    status_emoji = f"✅ فعال ({days_left} روز)"
+            except:
+                status_emoji = "✅ فعال"
+        elif status == "pending":
+            status_emoji = "⏳ در انتظار ارسال کانفیگ"
+        elif status == "sent":
+            status_emoji = "📤 کانفیگ ارسال شده"
+        else:
+            status_emoji = "❓ نامشخص"
+        
+        text += f"📌 {plan_name}\n"
+        text += f"   📊 حجم: {volume}\n"
+        text += f"   💰 قیمت: {price:,} تومان\n"
+        text += f"   📆 وضعیت: {status_emoji}\n"
+        text += f"   🕒 انقضا: {expires_at or 'نامشخص'}\n"
+        text += "─" * 20 + "\n"
+    
+    await message.answer(text)
+
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید سرویس")
 async def handle_buy_button(message: Message):
