@@ -6,7 +6,7 @@ def main_menu_keyboard():
         keyboard=[
             [KeyboardButton(text="🛒 خرید اشتراک"), KeyboardButton(text="💰 کیف پول")],
             [KeyboardButton(text="💳 افزایش موجودی"), KeyboardButton(text="📞 پشتیبانی")],
-            [KeyboardButton(text="📩 درخواست سرویس"), KeyboardButton(text="ℹ️ راهنما")]
+            [KeyboardButton(text="ℹ️ راهنما")]
         ],
         resize_keyboard=True
     )
