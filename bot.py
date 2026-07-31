@@ -279,9 +279,12 @@ async def select_user_count(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def buy_callback(callback: CallbackQuery):
+    # ========== پاسخ سریع به کاربر ==========
+    await callback.answer("✅ در حال ثبت درخواست...")
+    
     data_parts = callback.data.split("_")
     if len(data_parts) < 4:
-        await callback.answer("❌ اطلاعات ناقص است.", show_alert=True)
+        await callback.message.edit_text("❌ اطلاعات ناقص است.")
         return
     
     price = data_parts[2].replace("k", "000")
@@ -290,36 +293,40 @@ async def buy_callback(callback: CallbackQuery):
     try:
         price_int = int(price)
     except:
-        await callback.answer("❌ خطا در پردازش قیمت.", show_alert=True)
+        await callback.message.edit_text("❌ خطا در پردازش قیمت.")
         return
     
     user_id = callback.from_user.id
     plan_name = f"۱ ماهه - {volume}"
     
-    # ========== ثبت درخواست در دیتابیس ==========
-    async with aiosqlite.connect(DB_PATH) as db:
-        # ثبت درخواست سرویس
-        await db.execute(
-            "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
-            (user_id, plan_name)
+    try:
+        # ========== ثبت درخواست در دیتابیس ==========
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
+                (user_id, plan_name)
+            )
+            await db.commit()
+        
+        # ========== ارسال پیام به کاربر ==========
+        await callback.message.edit_text(
+            f"✅ درخواست سرویس شما با موفقیت ثبت شد!\n\n"
+            f"📅 مدت: ۱ ماهه\n"
+            f"👤 تعداد کاربر: ۱ کاربره\n"
+            f"📊 حجم: {volume}\n"
+            f"💰 قیمت: {price_int:,} تومان\n\n"
+            f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد.\n"
+            f"لطفاً صبور باشید."
         )
-        await db.commit()
-    
-    # ========== ارسال پیام به کاربر ==========
-    await callback.message.edit_text(
-        f"✅ درخواست سرویس شما با موفقیت ثبت شد!\n\n"
-        f"📅 مدت: ۱ ماهه\n"
-        f"👤 تعداد کاربر: ۱ کاربره\n"
-        f"📊 حجم: {volume}\n"
-        f"💰 قیمت: {price_int:,} تومان\n\n"
-        f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد.\n"
-        f"لطفاً صبور باشید."
-    )
-    
-    # ========== ارسال نوتیفیکیشن به ادمین ==========
-    await notify_admin_service(user_id, plan_name, price_int, volume)
-    
-    await callback.answer()
+        
+        # ========== ارسال نوتیفیکیشن به ادمین ==========
+        await notify_admin_service(user_id, plan_name, price_int, volume)
+        
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ خطا در ثبت درخواست:\n{str(e)}\n\n"
+            "لطفاً دوباره تلاش کن یا با پشتیبانی تماس بگیر."
+        )
 
 # ========== دکمه‌های بازگشت ==========
 @dp.callback_query(lambda c: c.data == "back_to_duration")
