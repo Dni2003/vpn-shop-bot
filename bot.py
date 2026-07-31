@@ -128,7 +128,7 @@ async def handle_buy_button(message: Message):
 async def handle_balance_button(message: Message):
     await balance_command(message)
 
-@dp.message(lambda message: message.text == "💳 شارژ کیف پول")
+@dp.message(lambda message: message.text == "💳شارژ کیف پول")
 async def handle_charge_button(message: Message, state: FSMContext):
     await charge_command(message, state)
 
