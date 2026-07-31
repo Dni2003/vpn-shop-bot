@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import aiosqlite
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -20,6 +21,12 @@ from keyboards import (
     admin_panel_keyboard
 )
 from charge_states import ChargeStates
+from expiry_manager import (
+    check_and_update_expired,
+    get_user_active_service,
+    get_users_expiring_soon,
+    mark_notified
+)
 
 # ========== تنظیمات اولیه ==========
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +40,7 @@ DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 # ========== توابع کمکی ==========
 async def notify_admin(user_id: int, amount: int):
+    """ارسال نوتیفیکیشن به ادمین برای درخواست شارژ جدید"""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
         user = await cursor.fetchone()
@@ -53,6 +61,7 @@ async def notify_admin(user_id: int, amount: int):
             pass
 
 async def notify_admin_service(user_id: int, plan_name: str, price: int, volume: str):
+    """ارسال نوتیفیکیشن درخواست سرویس جدید به ادمین"""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
         user = await cursor.fetchone()
@@ -85,10 +94,27 @@ async def start_command(message: Message):
         )
         await db.commit()
     
+    # ===== بررسی وضعیت سرویس کاربر =====
+    service = await get_user_active_service(user.id)
+    expiry_message = ""
+    if service:
+        plan_name, volume, expires_at = service
+        expire_date = datetime.fromisoformat(expires_at)
+        now = datetime.now()
+        days_left = (expire_date - now).days
+        
+        if days_left < 0:
+            expiry_message = f"\n\n⛔ سرویس {plan_name} شما منقضی شده است!\nبرای خرید مجدد از بخش خرید اشتراک استفاده کنید."
+        elif days_left <= 3:
+            expiry_message = f"\n\n⚠️ سرویس {plan_name} شما در {days_left} روز دیگر منقضی می‌شود.\nبرای تمدید، از بخش خرید اشتراک استفاده کنید."
+        elif days_left <= 7:
+            expiry_message = f"\n\nℹ️ سرویس {plan_name} شما در {days_left} روز دیگر منقضی می‌شود."
+    
     await message.answer(
         f"👋 سلام {user.first_name}!\n"
         "به ربات فروش VPN خوش اومدی! 🌟\n\n"
-        "از دکمه‌های زیر استفاده کن:",
+        "از دکمه‌های زیر استفاده کن:"
+        f"{expiry_message}",
         reply_markup=main_menu_keyboard()
     )
 
@@ -117,9 +143,26 @@ async def balance_command(message: Message):
         result = await cursor.fetchone()
         balance = result[0] if result else 0
     
+    # ===== بررسی وضعیت سرویس کاربر =====
+    service = await get_user_active_service(user_id)
+    service_text = ""
+    if service:
+        plan_name, volume, expires_at = service
+        expire_date = datetime.fromisoformat(expires_at)
+        now = datetime.now()
+        days_left = (expire_date - now).days
+        
+        if days_left < 0:
+            service_text = f"\n\n⛔ سرویس فعالی ندارید (منقضی شده)"
+        else:
+            service_text = f"\n\n📦 سرویس فعال: {plan_name}\n📊 حجم: {volume}\n⏳ روزهای باقیمانده: {days_left} روز"
+    else:
+        service_text = "\n\n📭 هیچ سرویس فعالی ندارید."
+    
     await message.answer(
         f"💰 موجودی کیف پول شما:\n"
         f"{balance:,} تومان"
+        f"{service_text}"
     )
 
 @dp.message(Command("support"))
@@ -353,24 +396,38 @@ async def buy_callback(callback: CallbackQuery):
             )
             return
         
+        # ========== ثبت خرید ==========
+        expires_at = (datetime.now() + timedelta(days=30)).isoformat()
+        
         async with aiosqlite.connect(DB_PATH) as db:
+            # کسر مبلغ
             await db.execute(
                 "UPDATE users SET balance = balance - ? WHERE id = ?",
                 (price_int, user_id)
             )
+            # ثبت سرویس با تاریخ انقضا
             await db.execute(
-                "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
-                (user_id, plan_name)
+                "INSERT INTO service_requests (user_id, plan_name, volume, price, status, expires_at) VALUES (?, ?, ?, ?, 'active', ?)",
+                (user_id, plan_name, volume, price_int, expires_at)
+            )
+            # ثبت تراکنش
+            await db.execute(
+                "INSERT INTO transactions (user_id, amount, type, description, status) VALUES (?, ?, 'purchase', ?, 'completed')",
+                (user_id, price_int, f"خرید {plan_name}")
             )
             await db.commit()
         
+        # ===== دریافت موجودی جدید =====
+        balance_new = balance - price_int
+        
         await callback.message.edit_text(
-            f"✅ درخواست شما ثبت شد!\n\n"
+            f"✅ خرید شما با موفقیت انجام شد!\n\n"
             f"📅 مدت: ۱ ماهه\n"
             f"📊 حجم: {volume}\n"
             f"💰 قیمت: {price_int:,} تومان\n"
-            f"💰 موجودی جدید: {balance - price_int:,} تومان\n\n"
-            f"⏳ کانفیگ به زودی ارسال میشه."
+            f"💰 موجودی جدید: {balance_new:,} تومان\n"
+            f"📆 تاریخ انقضا: {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}\n\n"
+            f"⏳ کانفیگ به زودی توسط ادمین ارسال خواهد شد."
         )
         
         await notify_admin_service(user_id, plan_name, price_int, volume)
@@ -424,7 +481,7 @@ async def send_config(callback: CallbackQuery):
     
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "SELECT user_id FROM service_requests WHERE id = ? AND status = 'pending'",
+            "SELECT user_id FROM service_requests WHERE id = ? AND status = 'active'",
             (request_id,)
         )
         result = await cursor.fetchone()
@@ -454,7 +511,6 @@ async def handle_charge_request(callback: CallbackQuery):
     request_id = int(parts[2])
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # دریافت اطلاعات درخواست
         cursor = await db.execute(
             "SELECT user_id, amount FROM charge_requests WHERE id = ? AND status = 'pending'",
             (request_id,)
@@ -472,7 +528,6 @@ async def handle_charge_request(callback: CallbackQuery):
         user_id, amount = request
         logger.info(f"📝 درخواست {request_id}: کاربر {user_id} به مبلغ {amount} تومان")
         
-        # دریافت موجودی فعلی
         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
         result = await cursor.fetchone()
         old_balance = result[0] if result else 0
@@ -480,7 +535,6 @@ async def handle_charge_request(callback: CallbackQuery):
         
         if action == "approve":
             try:
-                # افزایش موجودی
                 await db.execute(
                     "UPDATE users SET balance = balance + ? WHERE id = ?",
                     (amount, user_id)
@@ -492,12 +546,10 @@ async def handle_charge_request(callback: CallbackQuery):
                 await db.commit()
                 logger.info(f"✅ کوئری‌ها با موفقیت اجرا و commit شدند.")
                 
-                # دریافت موجودی جدید
                 cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
                 new_balance = (await cursor.fetchone())[0] or 0
                 logger.info(f"💰 موجودی جدید کاربر {user_id}: {new_balance} تومان")
                 
-                # ارسال پیام به کاربر
                 try:
                     await bot.send_message(
                         user_id,
@@ -528,7 +580,6 @@ async def handle_charge_request(callback: CallbackQuery):
                 await callback.answer()
                 return
         else:
-            # رد درخواست
             await db.execute(
                 "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (request_id,)
@@ -579,6 +630,7 @@ async def admin_callback(callback: CallbackQuery):
 async def main():
     try:
         await init_db()
+        await check_and_update_expired()  # بررسی سرویس‌های منقضی‌شده
         print("✅ دیتابیس راه‌اندازی شد!")
         print("🤖 ربات در حال اجراست...")
         await dp.start_polling(bot)
