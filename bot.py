@@ -22,6 +22,7 @@ from keyboards import (
 )
 from charge_states import ChargeStates
 from broadcast_states import BroadcastStates
+from discount_states import DiscountStates
 from expiry_manager import (
     check_and_update_expired,
     get_user_active_service,
@@ -304,110 +305,6 @@ async def search_trans_command(message: Message):
     except Exception as e:
         await message.answer(f"❌ خطا: {str(e)}")
 
-# ========== دستور ارسال پیام گروهی (ادمین) ==========
-@dp.message(Command("broadcast"))
-async def broadcast_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی ندارید.")
-        return
-    
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "❌ فرمت صحیح:\n"
-            "/broadcast [متن پیام]\n\n"
-            "می‌توانید از مارک‌داون استفاده کنید."
-        )
-        return
-    
-    text = args[1]
-    
-    # دریافت لیست کاربران
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT id FROM users")
-        users = await cursor.fetchall()
-    
-    if not users:
-        await message.answer("❌ هیچ کاربری در دیتابیس وجود ندارد.")
-        return
-    
-    sent = 0
-    failed = 0
-    
-    await message.answer(f"⏳ در حال ارسال پیام به {len(users)} کاربر...")
-    
-    for user in users:
-        try:
-            await bot.send_message(user[0], text)
-            sent += 1
-        except:
-            failed += 1
-        await asyncio.sleep(0.05)
-    
-    await message.answer(
-        f"✅ پیام گروهی ارسال شد!\n\n"
-        f"📨 ارسال شده: {sent}\n"
-        f"❌ ناموفق: {failed}"
-    )
-
-# ========== دستور ایجاد کد تخفیف (ادمین) ==========
-@dp.message(Command("create_discount"))
-async def create_discount_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی ندارید.")
-        return
-    
-    args = message.text.split()
-    if len(args) < 5:
-        await message.answer(
-            "❌ فرمت صحیح:\n"
-            "/create_discount [code] [percent/fixed] [value] [max_uses] [days]\n"
-            "مثال: /create_discount SUMMER10 percent 10 5 30"
-        )
-        return
-    
-    code = args[1].upper()
-    discount_type = args[2].lower()
-    try:
-        discount_value = int(args[3])
-        max_uses = int(args[4])
-        days = int(args[5]) if len(args) > 5 else 0
-    except ValueError:
-        await message.answer("❌ لطفاً مقادیر عددی را به‌درستی وارد کنید.")
-        return
-    
-    if discount_type not in ["percent", "fixed"]:
-        await message.answer("❌ نوع تخفیف باید percent یا fixed باشد.")
-        return
-    
-    if discount_type == "percent" and discount_value > 100:
-        await message.answer("❌ تخفیف درصدی نمی‌تواند بیشتر از ۱۰۰ باشد.")
-        return
-    
-    expires_at = None
-    if days > 0:
-        expires_at = (datetime.now() + timedelta(days=days)).isoformat()
-    
-    try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "INSERT INTO discount_codes (code, discount_type, discount_value, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (code, discount_type, discount_value, max_uses, expires_at)
-            )
-            await db.commit()
-        
-        await message.answer(
-            f"✅ کد تخفیف {code} با موفقیت ایجاد شد!\n\n"
-            f"📊 نوع: {'درصد' if discount_type == 'percent' else 'مبلغ ثابت'}\n"
-            f"💰 مقدار: {discount_value} {'درصد' if discount_type == 'percent' else 'تومان'}\n"
-            f"📌 تعداد استفاده: {max_uses}\n"
-            f"📅 انقضا: {expires_at or 'نامحدود'}"
-        )
-    except aiosqlite.IntegrityError:
-        await message.answer("❌ این کد قبلاً استفاده شده است.")
-    except Exception as e:
-        await message.answer(f"❌ خطا: {str(e)}")
-
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
 async def handle_buy_button(message: Message):
@@ -483,7 +380,7 @@ async def process_charge_receipt(message: Message, state: FSMContext):
     
     await notify_admin(message.from_user.id, amount)
 
-# ========== مدیریت ارسال پیام گروهی (FSM) ==========
+# ========== سیستم ارسال پیام گروهی (FSM) ==========
 @dp.message(BroadcastStates.waiting_for_text)
 async def process_broadcast_text(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
@@ -495,11 +392,10 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     filter_type = data.get("filter_type", "all")
     text = message.text
     
-    # دریافت لیست کاربران بر اساس فیلتر
     async with aiosqlite.connect(DB_PATH) as db:
         if filter_type == "all":
             cursor = await db.execute("SELECT id FROM users")
-        else:  # active users (کسانی که سرویس فعال دارند)
+        else:  # active users
             cursor = await db.execute("SELECT DISTINCT user_id FROM service_requests WHERE status = 'active'")
         users = await cursor.fetchall()
     
@@ -526,6 +422,32 @@ async def process_broadcast_text(message: Message, state: FSMContext):
         f"❌ ناموفق: {failed}"
     )
     await state.clear()
+
+# ========== سیستم تخفیف (FSM) ==========
+@dp.message(DiscountStates.waiting_for_code)
+async def discount_code_handler(message: Message, state: FSMContext):
+    from admin import discount_process_code
+    await discount_process_code(message, state)
+
+@dp.callback_query(lambda c: c.data.startswith("discount_type_"))
+async def discount_type_handler(callback: CallbackQuery, state: FSMContext):
+    from admin import discount_process_type
+    await discount_process_type(callback, state)
+
+@dp.message(DiscountStates.waiting_for_value)
+async def discount_value_handler(message: Message, state: FSMContext):
+    from admin import discount_process_value
+    await discount_process_value(message, state)
+
+@dp.message(DiscountStates.waiting_for_max_uses)
+async def discount_max_uses_handler(message: Message, state: FSMContext):
+    from admin import discount_process_max_uses
+    await discount_process_max_uses(message, state)
+
+@dp.message(DiscountStates.waiting_for_days)
+async def discount_days_handler(message: Message, state: FSMContext):
+    from admin import discount_process_days
+    await discount_process_days(message, state)
 
 # ========== مدیریت خرید (۳ مرحله) ==========
 @dp.callback_query(lambda c: c.data == "select_duration_1m")
@@ -682,23 +604,20 @@ async def send_config(callback: CallbackQuery):
 # ========== مدیریت درخواست‌های شارژ (ادمین) ==========
 @dp.callback_query(lambda c: c.data.startswith("approve_charge_") or c.data.startswith("reject_charge_"))
 async def handle_charge_request(callback: CallbackQuery):
-    # ========== پاسخ سریع به کاربر ==========
     await callback.answer("⏳ در حال پردازش...")
     
-    # ========== چک کردن ادمین ==========
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
     
     logger.info(f"📩 دریافت callback: {callback.data}")
     
-    # ========== استخراج اطلاعات ==========
     parts = callback.data.split("_")
     if len(parts) < 3:
         await callback.answer("❌ داده ناقص است.", show_alert=True)
         return
     
-    action = parts[0]  # approve یا reject
+    action = parts[0]
     try:
         request_id = int(parts[2])
     except ValueError:
@@ -706,7 +625,6 @@ async def handle_charge_request(callback: CallbackQuery):
         return
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # ========== دریافت درخواست ==========
         cursor = await db.execute(
             "SELECT user_id, amount FROM charge_requests WHERE id = ? AND status = 'pending'",
             (request_id,)
@@ -725,7 +643,6 @@ async def handle_charge_request(callback: CallbackQuery):
         user_id, amount = request
         logger.info(f"📝 درخواست {request_id}: کاربر {user_id} به مبلغ {amount} تومان")
         
-        # ========== موجودی فعلی ==========
         cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
         result = await cursor.fetchone()
         old_balance = result[0] if result else 0
@@ -733,7 +650,6 @@ async def handle_charge_request(callback: CallbackQuery):
         
         if action == "approve":
             try:
-                # ========== افزایش موجودی ==========
                 await db.execute(
                     "UPDATE users SET balance = balance + ? WHERE id = ?",
                     (amount, user_id)
@@ -745,12 +661,10 @@ async def handle_charge_request(callback: CallbackQuery):
                 await db.commit()
                 logger.info(f"✅ کوئری‌ها با موفقیت اجرا و commit شدند.")
                 
-                # ========== موجودی جدید ==========
                 cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
                 new_balance = (await cursor.fetchone())[0] or 0
                 logger.info(f"💰 موجودی جدید کاربر {user_id}: {new_balance} تومان")
                 
-                # ========== پیام به کاربر ==========
                 try:
                     await bot.send_message(
                         user_id,
@@ -761,7 +675,6 @@ async def handle_charge_request(callback: CallbackQuery):
                 except Exception as e:
                     logger.error(f"❌ خطا در ارسال پیام به کاربر: {e}")
                 
-                # ========== ویرایش پیام ادمین ==========
                 try:
                     await callback.message.edit_text(
                         f"✅ درخواست {request_id} تأیید شد.\n"
@@ -794,7 +707,6 @@ async def handle_charge_request(callback: CallbackQuery):
                 await callback.answer()
                 return
         else:
-            # ========== رد درخواست ==========
             try:
                 await db.execute(
                     "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -900,9 +812,9 @@ async def admin_trans_callback(callback: CallbackQuery, state: FSMContext):
     
     # ========== مدیریت تخفیف‌ها ==========
     if callback.data.startswith("discount_"):
-        if callback.data == "discount_create":
-            from admin import discount_create
-            await discount_create(callback)
+        if callback.data == "discount_create_simple":
+            from admin import discount_create_simple
+            await discount_create_simple(callback, state)
         elif callback.data == "discount_list":
             from admin import discount_list
             await discount_list(callback)
