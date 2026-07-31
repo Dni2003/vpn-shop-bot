@@ -312,7 +312,83 @@ async def admin_callback(callback: types.CallbackQuery):
         await admin_add_balance(callback)
     else:
         await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+    )
 
+# ========== مدیریت درخواست‌های شارژ (ادمین) ==========
+@dp.callback_query(lambda c: c.data.startswith("approve_charge_") or c.data.startswith("reject_charge_"))
+async def handle_charge_request(callback: types.CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
+        return
+    
+    # استخراج شناسه درخواست و نوع عملیات
+    action, request_id = callback.data.split("_")[0], int(callback.data.split("_")[2])
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        # دریافت اطلاعات درخواست
+        cursor = await db.execute(
+            "SELECT user_id, amount FROM charge_requests WHERE id = ? AND status = 'pending'",
+            (request_id,)
+        )
+        request = await cursor.fetchone()
+        
+        if not request:
+            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
+            await callback.answer()
+            return
+        
+        user_id, amount = request
+        
+        if action == "approve":
+            # تأیید: افزایش موجودی کاربر
+            await db.execute(
+                "UPDATE users SET balance = balance + ? WHERE id = ?",
+                (amount, user_id)
+            )
+            await db.execute(
+                "UPDATE charge_requests SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (request_id,)
+            )
+            await db.commit()
+            
+            # ارسال پیام به کاربر
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"✅ درخواست شارژ شما به مبلغ {amount:,} تومان تأیید شد!\n"
+                    f"💰 موجودی جدید شما: +{amount:,} تومان"
+                )
+            except:
+                pass
+            
+            await callback.message.edit_text(
+                f"✅ درخواست {request_id} تأیید شد.\n"
+                f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد."
+            )
+            
+        else:  # reject
+            await db.execute(
+                "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (request_id,)
+            )
+            await db.commit()
+            
+            # ارسال پیام به کاربر
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"❌ درخواست شارژ شما به مبلغ {amount:,} تومان رد شد.\n"
+                    f"در صورت نیاز با پشتیبانی تماس بگیرید."
+                )
+            except:
+                pass
+            
+            await callback.message.edit_text(
+                f"❌ درخواست {request_id} رد شد.\n"
+                f"👤 کاربر {user_id} از شارژ {amount:,} تومانی محروم شد."
+            )
+    
+    await callback.answer()
 # ========== اجرای اصلی ==========
 async def main():
     try:
