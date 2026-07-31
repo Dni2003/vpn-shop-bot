@@ -7,7 +7,7 @@ DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 async def init_db():
     """ایجاد جدول‌ها (فقط یک بار اجرا می‌شود)"""
     async with aiosqlite.connect(DB_PATH) as db:
-        # جدول کاربران
+        # ========== جدول کاربران ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
@@ -20,8 +20,8 @@ async def init_db():
                 is_admin BOOLEAN DEFAULT 0
             )
         """)
-        # نسخه ۲ - رفع خطای threading
-        # جدول تراکنش‌ها
+        
+        # ========== جدول تراکنش‌ها ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +35,7 @@ async def init_db():
             )
         """)
         
-        # جدول کانفیگ‌های VPN
+        # ========== جدول کانفیگ‌های VPN ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS vpn_configs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +47,8 @@ async def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
-                # جدول درخواست‌های شارژ کیف پول
+        
+        # ========== جدول درخواست‌های شارژ کیف پول ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS charge_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +63,24 @@ async def init_db():
             )
         """)
         
+        # ========== جدول سرویس‌ها (با ستون‌های انقضا) ==========
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS service_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                plan_name TEXT,
+                volume TEXT,
+                price INTEGER,
+                status TEXT CHECK(status IN ('pending', 'sent', 'expired', 'active')) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                notified BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
         await db.commit()
+        print("✅ تمام جدول‌های دیتابیس با موفقیت ایجاد/بررسی شدند.")
 
 async def get_db():
     """این تابع هر بار که صدا زده می‌شود، یک اتصال تازه و جدید به دیتابیس برمی‌گرداند.
