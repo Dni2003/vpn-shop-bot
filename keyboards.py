@@ -9,10 +9,10 @@ def main_menu_keyboard():
         ],
         [
             InlineKeyboardButton(text="سرویس‌های من", callback_data="menu_services"),
-            InlineKeyboardButton(text="افزایش موجودی", callback_data="menu_charge")
+            InlineKeyboardButton(text="پشتیبانی", callback_data="menu_support")
         ],
         [
-            InlineKeyboardButton(text="پشتیبانی", callback_data="menu_support"),
+            InlineKeyboardButton(text="شارژ کیف پول", callback_data="menu_charge"),
             InlineKeyboardButton(text="بستن", callback_data="menu_close")
         ]
     ])
@@ -29,7 +29,7 @@ def buy_main_keyboard():
 # ========== سطح دوم: انتخاب تعداد کاربر (فقط ۱ کاربره) ==========
 def buy_user_count_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1 کاربره", callback_data="select_user_1")],
+        [InlineKeyboardButton(text="۱ کاربره", callback_data="select_user_1")],
         [InlineKeyboardButton(text="بازگشت", callback_data="back_to_duration")]
     ])
     return keyboard
