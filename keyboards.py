@@ -1,12 +1,21 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# ========== منوی اصلی (دکمه‌های شیشه‌ای) ==========
+# ========== منوی اصلی (شیشه‌ای - حرفه‌ای) ==========
 def main_menu_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🛒 خرید اشتراک"), KeyboardButton(text="💰 کیف پول")],
-            [KeyboardButton(text="💳 افزایش موجودی"), KeyboardButton(text="📞 پشتیبانی")],
-            [KeyboardButton(text="ℹ️ راهنما")]
+            [
+                KeyboardButton(text="🛒 خرید سرویس"),
+                KeyboardButton(text="📥 سرویس‌های من"),
+            ],
+            [
+                KeyboardButton(text="👤 حساب کاربری"),
+                KeyboardButton(text="💳 افزایش موجودی"),
+            ],
+            [
+                KeyboardButton(text="📞 پشتیبانی"),
+                KeyboardButton(text="ℹ️ راهنما"),
+            ]
         ],
         resize_keyboard=True
     )
