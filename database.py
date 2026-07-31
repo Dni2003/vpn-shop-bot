@@ -79,6 +79,41 @@ async def init_db():
             )
         """)
         
+        # ============================================================
+        # 🔽 کدهای جدید را از اینجا اضافه کن 🔽
+        # ============================================================
+        
+        # ========== جدول کدهای تخفیف (جدید) ==========
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS discount_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                discount_type TEXT CHECK(discount_type IN ('percent', 'fixed')),
+                discount_value INTEGER NOT NULL,
+                max_uses INTEGER DEFAULT 1,
+                used_count INTEGER DEFAULT 0,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
+            )
+        """)
+        
+        # ========== جدول استفاده از تخفیف‌ها (جدید) ==========
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS discount_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                discount_code_id INTEGER,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (discount_code_id) REFERENCES discount_codes(id)
+            )
+        """)
+        
+        # ============================================================
+        # 🔼 کدهای جدید تا اینجا 🔼
+        # ============================================================
+        
         await db.commit()
         print("✅ تمام جدول‌های دیتابیس با موفقیت ایجاد/بررسی شدند.")
 
