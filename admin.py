@@ -263,3 +263,87 @@ async def trans_search_user(callback: CallbackQuery):
         "مثال: /search_trans 123456789"
     )
     await callback.answer()
+
+# ========== ارسال پیام گروهی ==========
+async def admin_broadcast(callback: CallbackQuery):
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="📨 ارسال به همه کاربران", callback_data="broadcast_all")],
+        [types.InlineKeyboardButton(text="👥 ارسال به کاربران فعال", callback_data="broadcast_active")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")]
+    ])
+    await callback.message.edit_text(
+        "📨 ارسال پیام گروهی:\n\n"
+        "لطفاً نوع ارسال را انتخاب کنید:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+async def broadcast_to_users(callback: CallbackQuery, filter_type: str = "all"):
+    """ارسال پیام به کاربران با فیلتر"""
+    await callback.message.edit_text(
+        "✍️ لطفاً متن پیام را ارسال کنید.\n"
+        "می‌توانید از مارک‌داون استفاده کنید."
+    )
+    # ذخیره نوع فیلتر در یک متغیر موقت (برای سادگی از FSM استفاده نمی‌کنیم)
+    await callback.answer()
+
+# ========== مدیریت تخفیف‌ها ==========
+async def admin_discounts(callback: CallbackQuery):
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="➕ ایجاد کد تخفیف جدید", callback_data="discount_create")],
+        [types.InlineKeyboardButton(text="📋 لیست کدهای تخفیف", callback_data="discount_list")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")]
+    ])
+    await callback.message.edit_text(
+        "🎟 مدیریت تخفیف‌ها:\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کنید:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+async def discount_list(callback: CallbackQuery):
+    """نمایش لیست کدهای تخفیف"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT id, code, discount_type, discount_value, max_uses, used_count, expires_at, is_active FROM discount_codes ORDER BY created_at DESC"
+            )
+            discounts = await cursor.fetchall()
+        
+        if not discounts:
+            await callback.message.edit_text("📭 هیچ کد تخفیفی وجود ندارد.")
+            await callback.answer()
+            return
+        
+        text = "🎟 لیست کدهای تخفیف:\n\n"
+        for d in discounts:
+            disc_id, code, d_type, d_value, max_uses, used_count, expires_at, is_active = d
+            status = "✅ فعال" if is_active else "❌ غیرفعال"
+            type_text = "درصد" if d_type == "percent" else "مبلغ ثابت"
+            text += f"🆔 #{disc_id} | {code}\n"
+            text += f"   {type_text}: {d_value} | {status}\n"
+            text += f"   استفاده: {used_count}/{max_uses}\n"
+            text += f"   انقضا: {expires_at or 'نامحدود'}\n"
+            text += "─" * 20 + "\n"
+        
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_discounts")]
+        ])
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        
+    except Exception as e:
+        await callback.message.edit_text(f"❌ خطا: {str(e)}")
+        await callback.answer()
+
+async def discount_create(callback: CallbackQuery):
+    """فرم ایجاد کد تخفیف جدید"""
+    await callback.message.edit_text(
+        "🎟 ایجاد کد تخفیف جدید:\n\n"
+        "لطفاً اطلاعات را به فرمت زیر وارد کنید:\n"
+        "`/create_discount [code] [percent/fixed] [value] [max_uses] [days]`\n\n"
+        "مثال:\n"
+        "`/create_discount SUMMER10 percent 10 5 30`\n"
+        "💡 days = تعداد روز اعتبار (اختیاری - 0 = نامحدود)"
+    )
+    await callback.answer()
