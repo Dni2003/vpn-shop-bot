@@ -23,7 +23,7 @@ from keyboards import (
 from charge_states import ChargeStates
 from broadcast_states import BroadcastStates
 from discount_states import DiscountStates
-from discount_logic import validate_discount_code, apply_discount, mark_discount_used
+from discount_logic import validate_discount_code, apply_discount
 from expiry_manager import (
     check_and_update_expired,
     get_user_active_service,
@@ -546,12 +546,12 @@ async def discount_value_handler(message: Message, state: FSMContext):
 @dp.message(DiscountStates.waiting_for_max_uses)
 async def discount_max_uses_handler(message: Message, state: FSMContext):
     from admin import discount_process_max_uses
-    await discount_max_uses_handler(message, state)
+    await discount_process_max_uses(message, state)  # ✅ اصلاح شد
 
 @dp.message(DiscountStates.waiting_for_days)
 async def discount_days_handler(message: Message, state: FSMContext):
     from admin import discount_process_days
-    await discount_process_days(message, state)
+    await discount_process_days(message, state)  # ✅ اصلاح شد
 
 # ========== سیستم تخفیف - اعمال در خرید توسط کاربر (FSM) ==========
 @dp.message(DiscountStates.waiting_for_discount_in_purchase)
@@ -645,7 +645,7 @@ async def buy_callback(callback: CallbackQuery, state: FSMContext):
         volume=volume,
         plan_name=plan_name,
         user_id=user_id,
-        final_price=price_int  # قیمت نهایی = قیمت اصلی (تا زمانی که تخفیف اعمال نشده)
+        final_price=price_int
     )
     
     # ========== پرسش از کاربر برای کد تخفیف ==========
