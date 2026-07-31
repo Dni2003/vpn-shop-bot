@@ -115,14 +115,12 @@ async def charge_command(message: Message, state: FSMContext):
     await state.set_state(ChargeStates.waiting_for_amount)
     await message.answer(
         f"💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
-        f"مثلاً: 10000\n\n"
+        f"مثلاً: 100000\n\n"
         f"🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان\n\n"
-        f"⚜️ شماره کارت جهت واریز:\n"
-        f"`{config.CARD_NUMBER}`\n"
-        f"👤 به نام: دانیال بدری\n\n"  # <-- نام صاحب حساب
+        f"🏦 شماره کارت جهت واریز:\n"
+        f"`{config.CARD_NUMBER}`\n\n"
         f"⚠️ پس از واریز، حتماً عکس رسید را ارسال کنید."
     )
-    
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
@@ -133,7 +131,7 @@ async def handle_buy_button(message: Message):
 async def handle_balance_button(message: Message):
     await balance_command(message)
 
-@dp.message(lambda message: message.text == "💳شارژ کیف پول")
+@dp.message(lambda message: message.text == "💳 افزایش موجودی")
 async def handle_charge_button(message: Message, state: FSMContext):
     await charge_command(message, state)
 
@@ -271,50 +269,6 @@ async def back_to_main(callback: types.CallbackQuery):
     await callback.answer()
 
 # ========== مدیریت درخواست‌های شارژ (ادمین) ==========
-@dp.callback_query(lambda c: c.data in ["approve_charge", "reject_charge"])
-async def handle_charge_request(callback: types.CallbackQuery):
-    if not await is_admin(callback.from_user.id):
-        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
-        return
-    
-    # اینجا باید منطق تأیید/رد رو بنویسی
-    await callback.message.edit_text(
-        "✅ این بخش در حال تکمیل است.\n"
-        "به زودی امکان تأیید و رد درخواست‌ها فعال می‌شود."
-    )
-    await callback.answer()
-
-# ========== دستورات ادمین ==========
-@dp.message(Command("admin"))
-async def admin_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
-        return
-    await message.answer(
-        "👋 به پنل مدیریت خوش اومدی!",
-        reply_markup=admin_panel_keyboard()
-    )
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
-async def admin_callback(callback: types.CallbackQuery):
-    if not await is_admin(callback.from_user.id):
-        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
-        return
-    
-    if callback.data == "admin_users":
-        from admin import admin_users
-        await admin_users(callback)
-    elif callback.data == "admin_stats":
-        from admin import admin_stats
-        await admin_stats(callback)
-    elif callback.data == "admin_add_balance":
-        from admin import admin_add_balance
-        await admin_add_balance(callback)
-    else:
-        await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
-    )
-
-# ========== مدیریت درخواست‌های شارژ (ادمین) ==========
 @dp.callback_query(lambda c: c.data.startswith("approve_charge_") or c.data.startswith("reject_charge_"))
 async def handle_charge_request(callback: types.CallbackQuery):
     if not await is_admin(callback.from_user.id):
@@ -322,7 +276,9 @@ async def handle_charge_request(callback: types.CallbackQuery):
         return
     
     # استخراج شناسه درخواست و نوع عملیات
-    action, request_id = callback.data.split("_")[0], int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    action = parts[0]  # approve یا reject
+    request_id = int(parts[2])  # شناسه درخواست
     
     async with aiosqlite.connect(DB_PATH) as db:
         # دریافت اطلاعات درخواست
@@ -389,6 +345,39 @@ async def handle_charge_request(callback: types.CallbackQuery):
             )
     
     await callback.answer()
+
+# ========== دستورات ادمین ==========
+@dp.message(Command("admin"))
+async def admin_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
+        return
+    await message.answer(
+        "👋 به پنل مدیریت خوش اومدی!",
+        reply_markup=admin_panel_keyboard()
+    )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
+async def admin_callback(callback: types.CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
+        return
+    
+    if callback.data == "admin_users":
+        from admin import admin_users
+        await admin_users(callback)
+    elif callback.data == "admin_stats":
+        from admin import admin_stats
+        await admin_stats(callback)
+    elif callback.data == "admin_add_balance":
+        from admin import admin_add_balance
+        await admin_add_balance(callback)
+    elif callback.data == "admin_charge_requests":
+        from admin import admin_charge_requests
+        await admin_charge_requests(callback)
+    else:
+        await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+
 # ========== اجرای اصلی ==========
 async def main():
     try:
