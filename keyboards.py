@@ -6,7 +6,7 @@ def main_menu_keyboard():
         keyboard=[
             [KeyboardButton(text="🛒 خرید اشتراک"), KeyboardButton(text="💰 کیف پول")],
             [KeyboardButton(text="💳 افزایش موجودی"), KeyboardButton(text="📞 پشتیبانی")],
-            [KeyboardButton(text="ℹ️ راهنما")]
+            [KeyboardButton(text="📩 درخواست سرویس"), KeyboardButton(text="ℹ️ راهنما")]
         ],
         resize_keyboard=True
     )
@@ -54,7 +54,8 @@ def admin_panel_keyboard():
             InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")
         ],
         [
-            InlineKeyboardButton(text="📩 درخواست‌های شارژ", callback_data="admin_charge_requests")  # جدید
+            InlineKeyboardButton(text="📩 درخواست‌های شارژ", callback_data="admin_charge_requests"),
+            InlineKeyboardButton(text="📩 درخواست‌های سرویس", callback_data="admin_service_requests")
         ],
         [
             InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")
