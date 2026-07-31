@@ -47,6 +47,20 @@ async def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
+                # جدول درخواست‌های شارژ کیف پول
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS charge_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                amount INTEGER,
+                receipt_photo_id TEXT,
+                status TEXT CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+                admin_note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
         
         await db.commit()
 
