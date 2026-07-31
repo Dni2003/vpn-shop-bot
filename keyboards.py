@@ -5,7 +5,7 @@ def main_menu_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🛒 خرید اشتراک"), KeyboardButton(text="💰 کیف پول")],
-            [KeyboardButton(text="💳شارژ کیف پول"), KeyboardButton(text="📞 پشتیبانی")],
+            [KeyboardButton(text="💳 افزایش موجودی"), KeyboardButton(text="📞 پشتیبانی")],
             [KeyboardButton(text="ℹ️ راهنما")]
         ],
         resize_keyboard=True
@@ -42,12 +42,21 @@ def buy_plans_keyboard():
     ])
     return keyboard
 
-# ========== کیبورد پنل ادمین (این رو فراموش کرده بودم!) ==========
+# ========== کیبورد پنل ادمین ==========
 def admin_panel_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👥 مدیریت کاربران", callback_data="admin_users"),
-         InlineKeyboardButton(text="📊 آمار فروش", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="💰 مدیریت تراکنش‌ها", callback_data="admin_transactions"),
-         InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")],
-        [InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")]
+        [
+            InlineKeyboardButton(text="👥 مدیریت کاربران", callback_data="admin_users"),
+            InlineKeyboardButton(text="📊 آمار فروش", callback_data="admin_stats")
+        ],
+        [
+            InlineKeyboardButton(text="💰 مدیریت تراکنش‌ها", callback_data="admin_transactions"),
+            InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")
+        ],
+        [
+            InlineKeyboardButton(text="📩 درخواست‌های شارژ", callback_data="admin_charge_requests")  # جدید
+        ],
+        [
+            InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")
+        ]
     ])
