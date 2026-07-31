@@ -485,6 +485,9 @@ async def send_config(callback: CallbackQuery):
 # ========== مدیریت درخواست‌های شارژ (ادمین) ==========
 @dp.callback_query(lambda c: c.data.startswith("approve_charge_") or c.data.startswith("reject_charge_"))
 async def handle_charge_request(callback: CallbackQuery):
+    # ========== پاسخ سریع به کاربر ==========
+    await callback.answer("⏳ در حال پردازش...")
+    
     # ========== چک کردن ادمین ==========
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
@@ -498,7 +501,7 @@ async def handle_charge_request(callback: CallbackQuery):
         await callback.answer("❌ داده ناقص است.", show_alert=True)
         return
     
-    action = parts[0]
+    action = parts[0]  # approve یا reject
     try:
         request_id = int(parts[2])
     except ValueError:
@@ -516,7 +519,8 @@ async def handle_charge_request(callback: CallbackQuery):
         if not request:
             try:
                 await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
-            except TelegramBadRequest:
+            except Exception as e:
+                logger.warning(f"⚠️ خطا در ویرایش پیام: {e}")
                 await callback.message.answer("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
             await callback.answer()
             return
@@ -556,6 +560,7 @@ async def handle_charge_request(callback: CallbackQuery):
                         f"✅ درخواست شارژ شما به مبلغ {amount:,} تومان تأیید شد!\n"
                         f"💰 موجودی جدید شما: {new_balance:,} تومان"
                     )
+                    logger.info(f"✅ پیام تأیید به کاربر {user_id} ارسال شد.")
                 except Exception as e:
                     logger.error(f"❌ خطا در ارسال پیام به کاربر: {e}")
                 
@@ -567,41 +572,67 @@ async def handle_charge_request(callback: CallbackQuery):
                         f"💰 موجودی قبلی: {old_balance:,} تومان\n"
                         f"💰 موجودی جدید: {new_balance:,} تومان"
                     )
-                except TelegramBadRequest:
+                    logger.info("✅ پیام ادمین ویرایش شد.")
+                except TelegramBadRequest as e:
+                    logger.warning(f"⚠️ خطا در ویرایش پیام (BadRequest): {e}")
                     await callback.message.answer(
                         f"✅ درخواست {request_id} تأیید شد.\n"
                         f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد.\n"
                         f"💰 موجودی قبلی: {old_balance:,} تومان\n"
                         f"💰 موجودی جدید: {new_balance:,} تومان"
                     )
+                except Exception as e:
+                    logger.error(f"❌ خطای غیرمنتظره در ویرایش: {e}")
+                    await callback.message.answer(
+                        f"✅ درخواست {request_id} تأیید شد.\n"
+                        f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد."
+                    )
                 
             except Exception as e:
                 logger.error(f"❌ خطا در تأیید درخواست: {e}")
-                await callback.message.edit_text(f"❌ خطا در تأیید درخواست:\n{str(e)}")
+                try:
+                    await callback.message.edit_text(f"❌ خطا در تأیید درخواست:\n{str(e)}")
+                except:
+                    await callback.message.answer(f"❌ خطا در تأیید درخواست:\n{str(e)}")
                 await callback.answer()
                 return
         else:
             # ========== رد درخواست ==========
-            await db.execute(
-                "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (request_id,)
-            )
-            await db.commit()
-            
             try:
-                await bot.send_message(
-                    user_id,
-                    f"❌ درخواست شارژ شما به مبلغ {amount:,} تومان رد شد."
+                await db.execute(
+                    "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (request_id,)
                 )
-            except:
-                pass
-            
-            try:
-                await callback.message.edit_text(f"❌ درخواست {request_id} رد شد.")
-            except TelegramBadRequest:
-                await callback.message.answer(f"❌ درخواست {request_id} رد شد.")
+                await db.commit()
+                logger.info(f"✅ درخواست {request_id} رد شد.")
+                
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"❌ درخواست شارژ شما به مبلغ {amount:,} تومان رد شد."
+                    )
+                    logger.info(f"✅ پیام رد به کاربر {user_id} ارسال شد.")
+                except Exception as e:
+                    logger.error(f"❌ خطا در ارسال پیام رد: {e}")
+                
+                try:
+                    await callback.message.edit_text(f"❌ درخواست {request_id} رد شد.")
+                except TelegramBadRequest:
+                    await callback.message.answer(f"❌ درخواست {request_id} رد شد.")
+                except Exception as e:
+                    logger.error(f"❌ خطا در ویرایش پیام رد: {e}")
+                    await callback.message.answer(f"❌ درخواست {request_id} رد شد.")
+                
+            except Exception as e:
+                logger.error(f"❌ خطا در رد درخواست: {e}")
+                try:
+                    await callback.message.edit_text(f"❌ خطا در رد درخواست:\n{str(e)}")
+                except:
+                    await callback.message.answer(f"❌ خطا در رد درخواست:\n{str(e)}")
+                await callback.answer()
+                return
     
-    await callback.answer()
+    await callback.answer("✅ عملیات با موفقیت انجام شد.")
 
 # ========== مدیریت دکمه‌های پنل ادمین ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
