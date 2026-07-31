@@ -132,3 +132,45 @@ async def admin_charge_requests(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
+
+# ========== لیست درخواست‌های سرویس ==========
+async def admin_service_requests(callback: CallbackQuery):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT id, user_id, plan_name, created_at FROM service_requests WHERE status = 'pending' ORDER BY created_at DESC"
+            )
+            requests = await cursor.fetchall()
+        
+        if not requests:
+            await callback.message.edit_text("📭 هیچ درخواست سرویس جدیدی وجود ندارد.")
+            await callback.answer()
+            return
+        
+        text = "📋 لیست درخواست‌های سرویس:\n\n"
+        for req in requests:
+            text += f"🆔 درخواست: {req[0]}\n"
+            text += f"👤 کاربر: {req[1]}\n"
+            text += f"📦 پلن: {req[2]}\n"
+            text += f"📅 تاریخ: {req[3]}\n"
+            text += "─" * 20 + "\n"
+        
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+        for req in requests:
+            request_id = req[0]
+            user_id = req[1]
+            keyboard.inline_keyboard.append([
+                types.InlineKeyboardButton(
+                    text=f"📤 ارسال کانفیگ برای {user_id}",
+                    callback_data=f"send_config_{request_id}"
+                )
+            ])
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+    except Exception as e:
+        await callback.message.edit_text(f"❌ خطا: {str(e)}")
+        await callback.answer()
