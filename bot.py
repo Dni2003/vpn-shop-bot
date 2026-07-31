@@ -51,6 +51,29 @@ async def notify_admin(user_id: int, amount: int):
         except:
             pass
 
+async def notify_admin_service(user_id: int, plan_name: str, price: int, volume: str):
+    """ارسال نوتیفیکیشن درخواست سرویس جدید به ادمین"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
+        user = await cursor.fetchone()
+    
+    username = user[0] if user else "بدون نام کاربری"
+    first_name = user[1] if user else "کاربر"
+    
+    text = f"📩 درخواست سرویس جدید:\n\n"
+    text += f"👤 کاربر: {first_name} (@{username})\n"
+    text += f"🆔 آیدی: {user_id}\n"
+    text += f"📦 پلن: {plan_name}\n"
+    text += f"📊 حجم: {volume}\n"
+    text += f"💰 قیمت: {price:,} تومان\n\n"
+    text += "برای ارسال کانفیگ، از پنل ادمین استفاده کن."
+    
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text)
+        except:
+            pass
+
 # ========== دستورات عمومی ==========
 @dp.message(Command("start"))
 async def start_command(message: Message):
@@ -116,8 +139,46 @@ async def charge_command(message: Message, state: FSMContext):
     await message.answer(
         "💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
         "مثلاً: 100000\n\n"
-        "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"  # تغییر داده شد
+        "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"
     )
+
+@dp.message(Command("send"))
+async def send_config_to_user(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        return
+    
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer(
+            "❌ فرمت صحیح:\n"
+            "/send [user_id] [متن کانفیگ]"
+        )
+        return
+    
+    try:
+        user_id = int(args[1])
+        config_text = " ".join(args[2:])
+        
+        await bot.send_message(
+            user_id,
+            f"🔐 کانفیگ سرویس شما:\n\n"
+            f"`{config_text}`\n\n"
+            f"✅ لطفاً این کانفیگ رو در کلاینت خود وارد کن."
+        )
+        
+        # به‌روزرسانی وضعیت درخواست در دیتابیس
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE service_requests SET status = 'sent' WHERE user_id = ? AND status = 'pending'",
+                (user_id,)
+            )
+            await db.commit()
+        
+        await message.answer(f"✅ کانفیگ به کاربر {user_id} ارسال شد.")
+        
+    except Exception as e:
+        await message.answer(f"❌ خطا در ارسال کانفیگ: {str(e)}")
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
@@ -140,12 +201,16 @@ async def handle_support_button(message: Message):
 async def handle_help_button(message: Message):
     await help_command(message)
 
+@dp.message(lambda message: message.text == "📩 درخواست سرویس")
+async def handle_service_request_button(message: Message):
+    await service_request_command(message)
+
 # ========== سیستم شارژ کیف پول (FSM) ==========
 @dp.message(ChargeStates.waiting_for_amount)
 async def process_charge_amount(message: Message, state: FSMContext):
     try:
         amount = int(message.text)
-        if amount < 100000:  # تغییر داده شد: حداقل مبلغ ۱۰۰,۰۰۰ تومان
+        if amount < 100000:
             await message.answer("❌ حداقل مبلغ شارژ ۱۰۰,۰۰۰ تومان است. لطفاً مجدداً وارد کن.")
             return
         
@@ -155,7 +220,7 @@ async def process_charge_amount(message: Message, state: FSMContext):
             f"✅ مبلغ {amount:,} تومان ثبت شد.\n\n"
             f"🏦 شماره کارت جهت واریز:\n"
             f"`{config.CARD_NUMBER}`\n"
-            f"👤 به نام: دانیال بدری\n\n"  # اضافه شد
+            f"👤 به نام: دانیال بدری\n\n"
             "📸 لطفاً عکس رسید کارت به کارت خود را ارسال کنید.\n"
             "⚠️ فقط عکس (JPEG/PNG) پذیرفته می‌شود."
         )
@@ -232,14 +297,32 @@ async def buy_callback(callback: CallbackQuery):
         await callback.answer("❌ خطا در پردازش قیمت.", show_alert=True)
         return
     
+    user_id = callback.from_user.id
+    plan_name = f"۱ ماهه - {volume}"
+    
+    # ========== ثبت درخواست در دیتابیس ==========
+    async with aiosqlite.connect(DB_PATH) as db:
+        # ثبت درخواست سرویس
+        await db.execute(
+            "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
+            (user_id, plan_name)
+        )
+        await db.commit()
+    
+    # ========== ارسال پیام به کاربر ==========
     await callback.message.edit_text(
-        f"✅ تعرفه انتخاب شده:\n\n"
+        f"✅ درخواست سرویس شما با موفقیت ثبت شد!\n\n"
         f"📅 مدت: ۱ ماهه\n"
         f"👤 تعداد کاربر: ۱ کاربره\n"
-        f"💰 قیمت: {price_int:,} تومان\n"
-        f"📊 حجم: {volume}\n\n"
-        f"🔜 به زودی امکان خرید و پرداخت فعال می‌شود."
+        f"📊 حجم: {volume}\n"
+        f"💰 قیمت: {price_int:,} تومان\n\n"
+        f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد.\n"
+        f"لطفاً صبور باشید."
     )
+    
+    # ========== ارسال نوتیفیکیشن به ادمین ==========
+    await notify_admin_service(user_id, plan_name, price_int, volume)
+    
     await callback.answer()
 
 # ========== دکمه‌های بازگشت ==========
@@ -265,6 +348,45 @@ async def back_to_main(callback: CallbackQuery):
     await callback.message.answer(
         "🔙 به منوی اصلی برگشتید.",
         reply_markup=main_menu_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "back_to_admin")
+async def back_to_admin(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.message.answer(
+        "👋 به پنل مدیریت خوش اومدی!",
+        reply_markup=admin_panel_keyboard()
+    )
+    await callback.answer()
+
+# ========== مدیریت درخواست‌های سرویس (ادمین) ==========
+@dp.callback_query(lambda c: c.data.startswith("send_config_"))
+async def send_config(callback: CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
+        return
+    
+    request_id = int(callback.data.split("_")[2])
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT user_id FROM service_requests WHERE id = ? AND status = 'pending'",
+            (request_id,)
+        )
+        result = await cursor.fetchone()
+        
+        if not result:
+            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
+            await callback.answer()
+            return
+        
+        user_id = result[0]
+    
+    await callback.message.edit_text(
+        f"📤 لطفاً کانفیگ را برای کاربر {user_id} ارسال کن:\n\n"
+        f"از دستور زیر استفاده کن:\n"
+        f"`/send {user_id} [متن کانفیگ]`"
     )
     await callback.answer()
 
@@ -375,13 +497,9 @@ async def admin_callback(callback: CallbackQuery):
     elif callback.data == "admin_charge_requests":
         from admin import admin_charge_requests
         await admin_charge_requests(callback)
-    elif callback.data == "back_to_admin":
-        await callback.message.delete()
-        await callback.message.answer(
-            "👋 به پنل مدیریت خوش اومدی!",
-            reply_markup=admin_panel_keyboard()
-        )
-        await callback.answer()
+    elif callback.data == "admin_service_requests":
+        from admin import admin_service_requests
+        await admin_service_requests(callback)
     else:
         await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
 
