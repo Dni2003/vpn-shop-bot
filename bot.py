@@ -4,7 +4,7 @@ import sys
 import aiosqlite
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 
@@ -114,12 +114,9 @@ async def support_command(message: Message):
 async def charge_command(message: Message, state: FSMContext):
     await state.set_state(ChargeStates.waiting_for_amount)
     await message.answer(
-        f"💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
-        f"مثلاً: 100000\n\n"
-        f"🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان\n\n"
-        f"🏦 شماره کارت جهت واریز:\n"
-        f"`{config.CARD_NUMBER}`\n\n"
-        f"⚠️ پس از واریز، حتماً عکس رسید را ارسال کنید."
+        "💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
+        "مثلاً: 100000\n\n"
+        "🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان"
     )
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
@@ -156,6 +153,8 @@ async def process_charge_amount(message: Message, state: FSMContext):
         await state.set_state(ChargeStates.waiting_for_receipt)
         await message.answer(
             f"✅ مبلغ {amount:,} تومان ثبت شد.\n\n"
+            f"🏦 شماره کارت جهت واریز:\n"
+            f"`{config.CARD_NUMBER}`\n\n"
             "📸 لطفاً عکس رسید کارت به کارت خود را ارسال کنید.\n"
             "⚠️ فقط عکس (JPEG/PNG) پذیرفته می‌شود."
         )
@@ -200,7 +199,7 @@ async def process_charge_receipt(message: Message, state: FSMContext):
 
 # ========== مدیریت خرید (۳ مرحله) ==========
 @dp.callback_query(lambda c: c.data == "select_duration_1m")
-async def select_duration(callback: types.CallbackQuery):
+async def select_duration(callback: CallbackQuery):
     await callback.message.edit_text(
         "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
         reply_markup=buy_user_count_keyboard()
@@ -208,7 +207,7 @@ async def select_duration(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "select_user_1")
-async def select_user_count(callback: types.CallbackQuery):
+async def select_user_count(callback: CallbackQuery):
     await callback.message.edit_text(
         "📋 لیست تعرفه‌های ۱ ماهه / ۱ کاربره:\n\n"
         "یکی از گزینه‌های زیر رو انتخاب کن:",
@@ -217,7 +216,7 @@ async def select_user_count(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
-async def buy_callback(callback: types.CallbackQuery):
+async def buy_callback(callback: CallbackQuery):
     data_parts = callback.data.split("_")
     if len(data_parts) < 4:
         await callback.answer("❌ اطلاعات ناقص است.", show_alert=True)
@@ -244,7 +243,7 @@ async def buy_callback(callback: types.CallbackQuery):
 
 # ========== دکمه‌های بازگشت ==========
 @dp.callback_query(lambda c: c.data == "back_to_duration")
-async def back_to_duration(callback: types.CallbackQuery):
+async def back_to_duration(callback: CallbackQuery):
     await callback.message.edit_text(
         "📅 مدت اشتراک خود را انتخاب کنید:",
         reply_markup=buy_main_keyboard()
@@ -252,7 +251,7 @@ async def back_to_duration(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "back_to_user_count")
-async def back_to_user_count(callback: types.CallbackQuery):
+async def back_to_user_count(callback: CallbackQuery):
     await callback.message.edit_text(
         "👤 تعداد کاربران مورد نظر را انتخاب کنید:",
         reply_markup=buy_user_count_keyboard()
@@ -260,7 +259,7 @@ async def back_to_user_count(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "back_to_main")
-async def back_to_main(callback: types.CallbackQuery):
+async def back_to_main(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer(
         "🔙 به منوی اصلی برگشتید.",
@@ -270,7 +269,7 @@ async def back_to_main(callback: types.CallbackQuery):
 
 # ========== مدیریت درخواست‌های شارژ (ادمین) ==========
 @dp.callback_query(lambda c: c.data.startswith("approve_charge_") or c.data.startswith("reject_charge_"))
-async def handle_charge_request(callback: types.CallbackQuery):
+async def handle_charge_request(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
@@ -358,7 +357,7 @@ async def admin_command(message: Message):
     )
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
-async def admin_callback(callback: types.CallbackQuery):
+async def admin_callback(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
@@ -375,6 +374,13 @@ async def admin_callback(callback: types.CallbackQuery):
     elif callback.data == "admin_charge_requests":
         from admin import admin_charge_requests
         await admin_charge_requests(callback)
+    elif callback.data == "back_to_admin":
+        await callback.message.delete()
+        await callback.message.answer(
+            "👋 به پنل مدیریت خوش اومدی!",
+            reply_markup=admin_panel_keyboard()
+        )
+        await callback.answer()
     else:
         await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
 
