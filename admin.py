@@ -1,8 +1,9 @@
 import aiosqlite
 from aiogram import types
 from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
 from config import config
-from datetime import datetime, timedelta  # اضافه شد
+from datetime import datetime, timedelta
 
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
@@ -20,7 +21,7 @@ def to_tehran_time(utc_str: str) -> str:
 async def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
-# ========== پنل اصلی ادمین (برای bot.py) ==========
+# ========== پنل اصلی ادمین ==========
 async def admin_panel(message: Message):
     user_id = message.from_user.id
     if not await is_admin(user_id):
@@ -83,7 +84,7 @@ async def admin_add_balance(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ========== لیست درخواست‌های شارژ (با زمان اصلاح‌شده) ==========
+# ========== لیست درخواست‌های شارژ ==========
 async def admin_charge_requests(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -97,11 +98,8 @@ async def admin_charge_requests(callback: CallbackQuery):
             await callback.answer()
             return
         
-        # ارسال هر درخواست به صورت یک پیام جداگانه با عکس
         for req in requests:
             request_id, user_id, amount, photo_id, created_at = req
-            
-            # ========== تبدیل زمان به ایران ==========
             local_time = to_tehran_time(created_at)
             
             text = f"📩 درخواست #{request_id}\n"
@@ -109,7 +107,6 @@ async def admin_charge_requests(callback: CallbackQuery):
             text += f"💰 مبلغ: {amount:,} تومان\n"
             text += f"🕒 زمان (ایران): {local_time}\n"
             
-            # دکمه‌های تأیید/رد برای این درخواست
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
                 [
                     types.InlineKeyboardButton(text="✅ تأیید", callback_data=f"approve_charge_{request_id}"),
@@ -117,7 +114,6 @@ async def admin_charge_requests(callback: CallbackQuery):
                 ]
             ])
             
-            # ارسال عکس به همراه دکمه‌ها
             try:
                 await callback.message.answer_photo(
                     photo=photo_id,
@@ -125,13 +121,11 @@ async def admin_charge_requests(callback: CallbackQuery):
                     reply_markup=keyboard
                 )
             except:
-                # اگه عکس قابل ارسال نبود، فقط متن رو بفرست
                 await callback.message.answer(
                     text + "\n⚠️ عکس قابل نمایش نیست.",
                     reply_markup=keyboard
                 )
         
-        # دکمه بازگشت به پنل ادمین
         await callback.message.answer(
             "🔙 برای بازگشت به پنل ادمین، از دکمه زیر استفاده کن:",
             reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
@@ -139,7 +133,6 @@ async def admin_charge_requests(callback: CallbackQuery):
             ])
         )
         
-        # حذف پیام قبلی (لیست قدیمی)
         await callback.message.delete()
         await callback.answer()
         
@@ -147,7 +140,7 @@ async def admin_charge_requests(callback: CallbackQuery):
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
 
-# ========== لیست درخواست‌های سرویس (با زمان اصلاح‌شده) ==========
+# ========== لیست درخواست‌های سرویس ==========
 async def admin_service_requests(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -193,7 +186,6 @@ async def admin_service_requests(callback: CallbackQuery):
 
 # ========== مدیریت تراکنش‌ها ==========
 async def admin_transactions(callback: CallbackQuery):
-    """نمایش منوی مدیریت تراکنش‌ها"""
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📋 همه تراکنش‌ها", callback_data="trans_all")],
         [types.InlineKeyboardButton(text="💳 تراکنش‌های شارژ", callback_data="trans_deposit")],
@@ -205,7 +197,6 @@ async def admin_transactions(callback: CallbackQuery):
     await callback.answer()
 
 async def show_transactions(callback: CallbackQuery, trans_type: str = None, user_id: int = None):
-    """نمایش لیست تراکنش‌ها با فیلتر"""
     try:
         query = "SELECT id, user_id, amount, type, description, status, created_at FROM transactions"
         params = []
@@ -236,7 +227,6 @@ async def show_transactions(callback: CallbackQuery, trans_type: str = None, use
             trans_id, user_id, amount, trans_type, desc, status, created_at = trans
             local_time = to_tehran_time(created_at)
             
-            # ایموجی بر اساس نوع
             type_emoji = "💳" if trans_type == "deposit" else "🛒"
             status_emoji = "✅" if status == "completed" else "⏳" if status == "pending" else "❌"
             
@@ -257,7 +247,6 @@ async def show_transactions(callback: CallbackQuery, trans_type: str = None, use
         await callback.answer()
 
 async def trans_search_user(callback: CallbackQuery):
-    """درخواست آیدی کاربر برای جستجو"""
     await callback.message.edit_text(
         "🔍 لطفاً آیدی کاربر را وارد کنید:\n"
         "مثال: /search_trans 123456789"
@@ -265,7 +254,7 @@ async def trans_search_user(callback: CallbackQuery):
     await callback.answer()
 
 # ========== ارسال پیام گروهی ==========
-async def admin_broadcast(callback: CallbackQuery):
+async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📨 ارسال به همه کاربران", callback_data="broadcast_all")],
         [types.InlineKeyboardButton(text="👥 ارسال به کاربران فعال", callback_data="broadcast_active")],
@@ -278,13 +267,15 @@ async def admin_broadcast(callback: CallbackQuery):
     )
     await callback.answer()
 
-async def broadcast_to_users(callback: CallbackQuery, filter_type: str = "all"):
-    """ارسال پیام به کاربران با فیلتر"""
+async def broadcast_to_users(callback: CallbackQuery, state: FSMContext, filter_type: str):
+    """ذخیره فیلتر و شروع فرآیند ارسال پیام"""
+    await state.update_data(filter_type=filter_type)
+    from broadcast_states import BroadcastStates
+    await state.set_state(BroadcastStates.waiting_for_text)
     await callback.message.edit_text(
         "✍️ لطفاً متن پیام را ارسال کنید.\n"
         "می‌توانید از مارک‌داون استفاده کنید."
     )
-    # ذخیره نوع فیلتر در یک متغیر موقت (برای سادگی از FSM استفاده نمی‌کنیم)
     await callback.answer()
 
 # ========== مدیریت تخفیف‌ها ==========
@@ -302,7 +293,6 @@ async def admin_discounts(callback: CallbackQuery):
     await callback.answer()
 
 async def discount_list(callback: CallbackQuery):
-    """نمایش لیست کدهای تخفیف"""
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute(
@@ -337,7 +327,6 @@ async def discount_list(callback: CallbackQuery):
         await callback.answer()
 
 async def discount_create(callback: CallbackQuery):
-    """فرم ایجاد کد تخفیف جدید"""
     await callback.message.edit_text(
         "🎟 ایجاد کد تخفیف جدید:\n\n"
         "لطفاً اطلاعات را به فرمت زیر وارد کنید:\n"
