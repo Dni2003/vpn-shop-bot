@@ -410,11 +410,15 @@ async def cancel_command(message: Message, state: FSMContext):
     await message.answer("❌ عملیات لغو شد.")
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
-@dp.message(lambda message: message.text == "🛒 خرید اشتراک")
+@dp.message(lambda message: message.text == "🛒 خرید سرویس")
 async def handle_buy_button(message: Message):
     await buy_command(message)
 
-@dp.message(lambda message: message.text == "💰 کیف پول")
+@dp.message(lambda message: message.text == "📥 سرویس‌های من")
+async def handle_my_services_button(message: Message):
+    await my_services_command(message)
+
+@dp.message(lambda message: message.text == "👤 حساب کاربری")
 async def handle_balance_button(message: Message):
     await balance_command(message)
 
