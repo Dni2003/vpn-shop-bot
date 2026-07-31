@@ -21,6 +21,7 @@ from keyboards import (
     admin_panel_keyboard
 )
 from charge_states import ChargeStates
+from broadcast_states import BroadcastStates
 from expiry_manager import (
     check_and_update_expired,
     get_user_active_service,
@@ -333,7 +334,6 @@ async def broadcast_command(message: Message):
     sent = 0
     failed = 0
     
-    # ارسال پیام به کاربران
     await message.answer(f"⏳ در حال ارسال پیام به {len(users)} کاربر...")
     
     for user in users:
@@ -342,7 +342,7 @@ async def broadcast_command(message: Message):
             sent += 1
         except:
             failed += 1
-        await asyncio.sleep(0.05)  # جلوگیری از محدودیت تلگرام
+        await asyncio.sleep(0.05)
     
     await message.answer(
         f"✅ پیام گروهی ارسال شد!\n\n"
@@ -482,6 +482,50 @@ async def process_charge_receipt(message: Message, state: FSMContext):
     )
     
     await notify_admin(message.from_user.id, amount)
+
+# ========== مدیریت ارسال پیام گروهی (FSM) ==========
+@dp.message(BroadcastStates.waiting_for_text)
+async def process_broadcast_text(message: Message, state: FSMContext):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        await state.clear()
+        return
+    
+    data = await state.get_data()
+    filter_type = data.get("filter_type", "all")
+    text = message.text
+    
+    # دریافت لیست کاربران بر اساس فیلتر
+    async with aiosqlite.connect(DB_PATH) as db:
+        if filter_type == "all":
+            cursor = await db.execute("SELECT id FROM users")
+        else:  # active users (کسانی که سرویس فعال دارند)
+            cursor = await db.execute("SELECT DISTINCT user_id FROM service_requests WHERE status = 'active'")
+        users = await cursor.fetchall()
+    
+    if not users:
+        await message.answer("❌ هیچ کاربری برای ارسال وجود ندارد.")
+        await state.clear()
+        return
+    
+    sent = 0
+    failed = 0
+    await message.answer(f"⏳ در حال ارسال پیام به {len(users)} کاربر...")
+    
+    for user in users:
+        try:
+            await bot.send_message(user[0], text)
+            sent += 1
+        except:
+            failed += 1
+        await asyncio.sleep(0.05)
+    
+    await message.answer(
+        f"✅ پیام گروهی ارسال شد!\n\n"
+        f"📨 ارسال شده: {sent}\n"
+        f"❌ ناموفق: {failed}"
+    )
+    await state.clear()
 
 # ========== مدیریت خرید (۳ مرحله) ==========
 @dp.callback_query(lambda c: c.data == "select_duration_1m")
@@ -787,14 +831,14 @@ async def handle_charge_request(callback: CallbackQuery):
     
     await callback.answer("✅ عملیات با موفقیت انجام شد.")
 
-# ========== مدیریت دکمه‌های پنل ادمین و تراکنش‌ها و تخفیف‌ها ==========
+# ========== مدیریت دکمه‌های پنل ادمین، تراکنش‌ها، تخفیف‌ها و برادکست ==========
 @dp.callback_query(lambda c: c.data and (
     c.data.startswith("admin_") or 
     c.data.startswith("trans_") or 
     c.data.startswith("broadcast_") or 
     c.data.startswith("discount_")
 ))
-async def admin_trans_callback(callback: CallbackQuery):
+async def admin_trans_callback(callback: CallbackQuery, state: FSMContext):
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
@@ -821,7 +865,7 @@ async def admin_trans_callback(callback: CallbackQuery):
             await admin_transactions(callback)
         elif callback.data == "admin_broadcast":
             from admin import admin_broadcast
-            await admin_broadcast(callback)
+            await admin_broadcast(callback, state)
         elif callback.data == "admin_discounts":
             from admin import admin_discounts
             await admin_discounts(callback)
@@ -851,7 +895,7 @@ async def admin_trans_callback(callback: CallbackQuery):
     if callback.data.startswith("broadcast_"):
         from admin import broadcast_to_users
         filter_type = callback.data.split("_")[1] if len(callback.data.split("_")) > 1 else "all"
-        await broadcast_to_users(callback, filter_type)
+        await broadcast_to_users(callback, state, filter_type)
         return
     
     # ========== مدیریت تخفیف‌ها ==========
