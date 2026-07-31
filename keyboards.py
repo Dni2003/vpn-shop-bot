@@ -1,24 +1,16 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# ========== منوی اصلی (شیشه‌ای - حرفه‌ای) ==========
+# ========== منوی اصلی (اینلاین - شیشه‌ای) ==========
 def main_menu_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🛒 خرید سرویس"),
-                KeyboardButton(text="📥 سرویس‌های من"),
-            ],
-            [
-                KeyboardButton(text="👤 حساب کاربری"),
-                KeyboardButton(text="💳 افزایش موجودی"),
-            ],
-            [
-                KeyboardButton(text="📞 پشتیبانی"),
-                KeyboardButton(text="ℹ️ راهنما"),
-            ]
-        ],
-        resize_keyboard=True
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 خرید سرویس", callback_data="menu_buy")],
+        [InlineKeyboardButton(text="👤 حساب کاربری", callback_data="menu_account")],
+        [InlineKeyboardButton(text="📥 سرویس‌های من", callback_data="menu_services")],
+        [InlineKeyboardButton(text="📞پشتیبانی ", callback_data="menu_support")],
+        [InlineKeyboardButton(text="💳 افزایش موجودی", callback_data="menu_charge")],
+        [InlineKeyboardButton(text="❌ بستن", callback_data="menu_close")]
+    ])
+    return keyboard
 
 # ========== سطح اول: انتخاب مدت (فقط ۱ ماهه) ==========
 def buy_main_keyboard():
