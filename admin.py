@@ -73,29 +73,65 @@ async def admin_add_balance(callback: types.CallbackQuery):
     )
 
     # ========== لیست درخواست‌های شارژ ==========
-async def admin_charge_requests(callback: types.CallbackQuery):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT id, user_id, amount, receipt_photo_id, created_at FROM charge_requests WHERE status = 'pending' ORDER BY created_at DESC"
+async def admin_charge_requests(callback: CallbackQuery):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT id, user_id, amount, receipt_photo_id, created_at FROM charge_requests WHERE status = 'pending' ORDER BY created_at DESC"
+            )
+            requests = await cursor.fetchall()
+        
+        if not requests:
+            await callback.message.edit_text("📭 هیچ درخواست شارژ جدیدی وجود ندارد.")
+            await callback.answer()
+            return
+        
+        # ارسال هر درخواست به صورت یک پیام جداگانه با عکس
+        for req in requests:
+            request_id, user_id, amount, photo_id, created_at = req
+            
+            text = f"📩 درخواست #{request_id}\n"
+            text += f"👤 کاربر: {user_id}\n"
+            text += f"💰 مبلغ: {amount:,} تومان\n"
+            text += f"📅 تاریخ: {created_at}\n"
+            
+            # دکمه‌های تأیید/رد برای این درخواست
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text="✅ تأیید", callback_data=f"approve_charge_{request_id}"),
+                    types.InlineKeyboardButton(text="❌ رد", callback_data=f"reject_charge_{request_id}")
+                ]
+            ])
+            
+            # ارسال عکس به همراه دکمه‌ها
+            try:
+                await callback.message.answer_photo(
+                    photo=photo_id,
+                    caption=text,
+                    reply_markup=keyboard
+                )
+            except:
+                # اگه عکس قابل ارسال نبود، فقط متن رو بفرست
+                await callback.message.answer(
+                    text + "\n⚠️ عکس قابل نمایش نیست.",
+                    reply_markup=keyboard
+                )
+        
+        # دکمه بازگشت به پنل ادمین
+        await callback.message.answer(
+            "🔙 برای بازگشت به پنل ادمین، از دکمه زیر استفاده کن:",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="back_to_admin")]
+            ])
         )
-        requests = await cursor.fetchall()
-    
-    if not requests:
-        await callback.message.edit_text("📭 هیچ درخواست شارژ جدیدی وجود ندارد.")
+        
+        # حذف پیام قبلی (لیست قدیمی)
+        await callback.message.delete()
         await callback.answer()
-        return
-    
-    text = "📋 لیست درخواست‌های شارژ:\n\n"
-    for req in requests:
-        text += f"🆔 درخواست: {req[0]}\n"
-        text += f"👤 کاربر: {req[1]}\n"
-        text += f"💰 مبلغ: {req[2]:,} تومان\n"
-        text += f"📅 تاریخ: {req[4]}\n"
-        text += f"🖼 عکس: {req[3]}\n"
-        text += "─" * 20 + "\n"
-    
-    await callback.message.edit_text(text)
-    await callback.answer()
+        
+    except Exception as e:
+        await callback.message.edit_text(f"❌ خطا: {str(e)}")
+        await callback.answer()
     
     
     await callback.answer()
