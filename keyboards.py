@@ -58,6 +58,10 @@ def admin_panel_keyboard():
             InlineKeyboardButton(text="📩 درخواست‌های سرویس", callback_data="admin_service_requests")
         ],
         [
+            InlineKeyboardButton(text="📨 ارسال پیام گروهی", callback_data="admin_broadcast"),
+            InlineKeyboardButton(text="🎟 مدیریت تخفیف‌ها", callback_data="admin_discounts")
+        ],
+        [
             InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")
         ]
     ])
