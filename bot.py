@@ -265,6 +265,20 @@ async def back_to_main(callback: types.CallbackQuery):
     )
     await callback.answer()
 
+# ========== مدیریت درخواست‌های شارژ (ادمین) ==========
+@dp.callback_query(lambda c: c.data in ["approve_charge", "reject_charge"])
+async def handle_charge_request(callback: types.CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
+        return
+    
+    # اینجا باید منطق تأیید/رد رو بنویسی
+    await callback.message.edit_text(
+        "✅ این بخش در حال تکمیل است.\n"
+        "به زودی امکان تأیید و رد درخواست‌ها فعال می‌شود."
+    )
+    await callback.answer()
+
 # ========== دستورات ادمین ==========
 @dp.message(Command("admin"))
 async def admin_command(message: Message):
