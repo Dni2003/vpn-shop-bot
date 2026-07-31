@@ -71,4 +71,31 @@ async def admin_add_balance(callback: types.CallbackQuery):
         "💰 لطفاً آیدی کاربر و مبلغ شارژ رو وارد کن:\n"
         "مثال: /add_balance 123456789 50000"
     )
+
+    # ========== لیست درخواست‌های شارژ ==========
+async def admin_charge_requests(callback: types.CallbackQuery):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT id, user_id, amount, receipt_photo_id, created_at FROM charge_requests WHERE status = 'pending' ORDER BY created_at DESC"
+        )
+        requests = await cursor.fetchall()
+    
+    if not requests:
+        await callback.message.edit_text("📭 هیچ درخواست شارژ جدیدی وجود ندارد.")
+        await callback.answer()
+        return
+    
+    text = "📋 لیست درخواست‌های شارژ:\n\n"
+    for req in requests:
+        text += f"🆔 درخواست: {req[0]}\n"
+        text += f"👤 کاربر: {req[1]}\n"
+        text += f"💰 مبلغ: {req[2]:,} تومان\n"
+        text += f"📅 تاریخ: {req[4]}\n"
+        text += f"🖼 عکس: {req[3]}\n"
+        text += "─" * 20 + "\n"
+    
+    await callback.message.edit_text(text)
+    await callback.answer()
+    )
+    
     await callback.answer()
