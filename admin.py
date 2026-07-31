@@ -2,8 +2,19 @@ import aiosqlite
 from aiogram import types
 from aiogram.types import Message, CallbackQuery
 from config import config
+from datetime import datetime, timedelta  # اضافه شد
 
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+
+# ========== تابع تبدیل زمان به ایران ==========
+def to_tehran_time(utc_str: str) -> str:
+    """تبدیل زمان UTC به زمان ایران (UTC+3:30)"""
+    try:
+        utc_time = datetime.fromisoformat(utc_str)
+        tehran_time = utc_time + timedelta(hours=3, minutes=30)
+        return tehran_time.strftime("%H:%M:%S %Y-%m-%d")
+    except:
+        return utc_str
 
 # ========== بررسی ادمین ==========
 async def is_admin(user_id: int) -> bool:
@@ -72,7 +83,7 @@ async def admin_add_balance(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ========== لیست درخواست‌های شارژ ==========
+# ========== لیست درخواست‌های شارژ (با زمان اصلاح‌شده) ==========
 async def admin_charge_requests(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -90,10 +101,13 @@ async def admin_charge_requests(callback: CallbackQuery):
         for req in requests:
             request_id, user_id, amount, photo_id, created_at = req
             
+            # ========== تبدیل زمان به ایران ==========
+            local_time = to_tehran_time(created_at)
+            
             text = f"📩 درخواست #{request_id}\n"
             text += f"👤 کاربر: {user_id}\n"
             text += f"💰 مبلغ: {amount:,} تومان\n"
-            text += f"📅 تاریخ: {created_at}\n"
+            text += f"🕒 زمان (ایران): {local_time}\n"
             
             # دکمه‌های تأیید/رد برای این درخواست
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -133,7 +147,7 @@ async def admin_charge_requests(callback: CallbackQuery):
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
 
-# ========== لیست درخواست‌های سرویس ==========
+# ========== لیست درخواست‌های سرویس (با زمان اصلاح‌شده) ==========
 async def admin_service_requests(callback: CallbackQuery):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -149,10 +163,12 @@ async def admin_service_requests(callback: CallbackQuery):
         
         text = "📋 لیست درخواست‌های سرویس:\n\n"
         for req in requests:
-            text += f"🆔 درخواست: {req[0]}\n"
-            text += f"👤 کاربر: {req[1]}\n"
-            text += f"📦 پلن: {req[2]}\n"
-            text += f"📅 تاریخ: {req[3]}\n"
+            request_id, user_id, plan_name, created_at = req
+            local_time = to_tehran_time(created_at)
+            text += f"🆔 درخواست: {request_id}\n"
+            text += f"👤 کاربر: {user_id}\n"
+            text += f"📦 پلن: {plan_name}\n"
+            text += f"🕒 زمان (ایران): {local_time}\n"
             text += "─" * 20 + "\n"
         
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
