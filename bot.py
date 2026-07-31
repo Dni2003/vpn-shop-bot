@@ -23,6 +23,7 @@ from keyboards import (
 from charge_states import ChargeStates
 from broadcast_states import BroadcastStates
 from discount_states import DiscountStates
+from discount_logic import validate_discount_code, apply_discount, mark_discount_used
 from expiry_manager import (
     check_and_update_expired,
     get_user_active_service,
@@ -80,6 +81,103 @@ async def notify_admin_service(user_id: int, plan_name: str, price: int, volume:
             await bot.send_message(admin_id, text)
         except:
             pass
+
+async def process_purchase(message: Message, state: FSMContext, callback: CallbackQuery = None):
+    """پردازش نهایی خرید با یا بدون تخفیف"""
+    data = await state.get_data()
+    user_id = data.get("user_id") or message.from_user.id
+    plan_name = data.get("plan_name")
+    volume = data.get("volume")
+    original_price = data.get("price")
+    final_price = data.get("final_price", original_price)
+    discount_code = data.get("discount_code")
+    discount_code_id = data.get("discount_code_id")
+    
+    try:
+        # ========== بررسی موجودی ==========
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+            result = await cursor.fetchone()
+            balance = result[0] if result else 0
+        
+        if balance < final_price:
+            msg = f"❌ موجودی کافی نیست!\n\n"
+            msg += f"💰 موجودی: {balance:,} تومان\n"
+            if discount_code:
+                msg += f"💰 قیمت اصلی: {original_price:,} تومان\n"
+                msg += f"🎟 قیمت با تخفیف: {final_price:,} تومان\n"
+            else:
+                msg += f"💰 قیمت: {final_price:,} تومان\n"
+            msg += f"\n⚠️ لطفاً حساب خود را شارژ کنید."
+            
+            if callback:
+                await callback.message.edit_text(msg)
+            else:
+                await message.answer(msg)
+            await state.clear()
+            return
+        
+        # ========== ثبت خرید ==========
+        expires_at = (datetime.now() + timedelta(days=30)).isoformat()
+        description = f"خرید {plan_name}"
+        if discount_code:
+            description += f" (با تخفیف {discount_code})"
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE users SET balance = balance - ? WHERE id = ?",
+                (final_price, user_id)
+            )
+            await db.execute(
+                "INSERT INTO service_requests (user_id, plan_name, volume, price, status, expires_at) VALUES (?, ?, ?, ?, 'active', ?)",
+                (user_id, plan_name, volume, final_price, expires_at)
+            )
+            await db.execute(
+                "INSERT INTO transactions (user_id, amount, type, description, status) VALUES (?, ?, 'purchase', ?, 'completed')",
+                (user_id, final_price, description)
+            )
+            if discount_code_id:
+                await db.execute(
+                    "UPDATE discount_codes SET used_count = used_count + 1 WHERE id = ?",
+                    (discount_code_id,)
+                )
+                await db.execute(
+                    "INSERT INTO discount_usage (user_id, discount_code_id) VALUES (?, ?)",
+                    (user_id, discount_code_id)
+                )
+            await db.commit()
+        
+        balance_new = balance - final_price
+        
+        # ========== پیام موفقیت ==========
+        msg = f"✅ خرید شما با موفقیت انجام شد!\n\n"
+        msg += f"📅 مدت: ۱ ماهه\n"
+        msg += f"📊 حجم: {volume}\n"
+        if discount_code:
+            msg += f"💰 قیمت اصلی: {original_price:,} تومان\n"
+            msg += f"🎟 تخفیف اعمال‌شده: {discount_code}\n"
+            msg += f"💰 قیمت نهایی: {final_price:,} تومان\n"
+        else:
+            msg += f"💰 قیمت: {final_price:,} تومان\n"
+        msg += f"💰 موجودی جدید: {balance_new:,} تومان\n"
+        msg += f"📆 تاریخ انقضا: {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}\n\n"
+        msg += f"⏳ کانفیگ به زودی توسط ادمین ارسال خواهد شد."
+        
+        if callback:
+            await callback.message.edit_text(msg)
+        else:
+            await message.answer(msg)
+        
+        await notify_admin_service(user_id, plan_name, final_price, volume)
+        await state.clear()
+        
+    except Exception as e:
+        error_msg = f"❌ خطا در پردازش خرید: {str(e)}"
+        if callback:
+            await callback.message.edit_text(error_msg)
+        else:
+            await message.answer(error_msg)
+        await state.clear()
 
 # ========== دستورات عمومی ==========
 @dp.message(Command("start"))
@@ -305,6 +403,12 @@ async def search_trans_command(message: Message):
     except Exception as e:
         await message.answer(f"❌ خطا: {str(e)}")
 
+# ========== دستور لغو عملیات ==========
+@dp.message(Command("cancel"))
+async def cancel_command(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ عملیات لغو شد.")
+
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
 async def handle_buy_button(message: Message):
@@ -423,7 +527,7 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     )
     await state.clear()
 
-# ========== سیستم تخفیف (FSM) ==========
+# ========== سیستم تخفیف - ایجاد کد توسط ادمین (FSM) ==========
 @dp.message(DiscountStates.waiting_for_code)
 async def discount_code_handler(message: Message, state: FSMContext):
     from admin import discount_process_code
@@ -442,12 +546,59 @@ async def discount_value_handler(message: Message, state: FSMContext):
 @dp.message(DiscountStates.waiting_for_max_uses)
 async def discount_max_uses_handler(message: Message, state: FSMContext):
     from admin import discount_process_max_uses
-    await discount_process_max_uses(message, state)
+    await discount_max_uses_handler(message, state)
 
 @dp.message(DiscountStates.waiting_for_days)
 async def discount_days_handler(message: Message, state: FSMContext):
     from admin import discount_process_days
     await discount_process_days(message, state)
+
+# ========== سیستم تخفیف - اعمال در خرید توسط کاربر (FSM) ==========
+@dp.message(DiscountStates.waiting_for_discount_in_purchase)
+async def process_discount_code_in_purchase(message: Message, state: FSMContext):
+    if message.text.startswith("/"):
+        await state.clear()
+        await message.answer("❌ عملیات لغو شد.")
+        return
+    
+    data = await state.get_data()
+    user_id = data.get("user_id")
+    original_price = data.get("price")
+    volume = data.get("volume")
+    plan_name = data.get("plan_name")
+    
+    # ========== اعتبارسنجی کد ==========
+    result = await validate_discount_code(message.text, user_id)
+    
+    if not result["valid"]:
+        await message.answer(result["message"])
+        return
+    
+    # ========== اعمال تخفیف ==========
+    new_price = await apply_discount(original_price, result["discount_type"], result["discount_value"])
+    
+    # ذخیره کد تخفیف در state
+    await state.update_data(
+        discount_code=message.text.upper(),
+        discount_code_id=result["code_id"],
+        discount_type=result["discount_type"],
+        discount_value=result["discount_value"],
+        final_price=new_price
+    )
+    
+    # ========== نمایش قیمت جدید ==========
+    discount_text = f"{result['discount_value']}%" if result["discount_type"] == "percent" else f"{result['discount_value']:,} تومان"
+    
+    await message.answer(
+        f"✅ کد تخفیف {message.text.upper()} اعمال شد!\n\n"
+        f"💰 قیمت اصلی: {original_price:,} تومان\n"
+        f"🎟 تخفیف: {discount_text}\n"
+        f"💰 قیمت نهایی: {new_price:,} تومان\n\n"
+        f"⏳ در حال بررسی موجودی..."
+    )
+    
+    # ========== ادامه فرآیند خرید ==========
+    await process_purchase(message, state)
 
 # ========== مدیریت خرید (۳ مرحله) ==========
 @dp.callback_query(lambda c: c.data == "select_duration_1m")
@@ -468,7 +619,7 @@ async def select_user_count(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
-async def buy_callback(callback: CallbackQuery):
+async def buy_callback(callback: CallbackQuery, state: FSMContext):
     await callback.answer("✅ در حال بررسی...")
     
     data_parts = callback.data.split("_")
@@ -488,54 +639,44 @@ async def buy_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     plan_name = f"۱ ماهه - {volume}"
     
-    try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
-            result = await cursor.fetchone()
-            balance = result[0] if result else 0
-        
-        if balance < price_int:
-            await callback.message.edit_text(
-                f"❌ موجودی کافی نیست!\n"
-                f"💰 موجودی: {balance:,} تومان\n"
-                f"💳 قیمت: {price_int:,} تومان\n\n"
-                f"⚠️ لطفاً حساب خود را شارژ کنید."
-            )
-            return
-        
-        expires_at = (datetime.now() + timedelta(days=30)).isoformat()
-        
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "UPDATE users SET balance = balance - ? WHERE id = ?",
-                (price_int, user_id)
-            )
-            await db.execute(
-                "INSERT INTO service_requests (user_id, plan_name, volume, price, status, expires_at) VALUES (?, ?, ?, ?, 'active', ?)",
-                (user_id, plan_name, volume, price_int, expires_at)
-            )
-            await db.execute(
-                "INSERT INTO transactions (user_id, amount, type, description, status) VALUES (?, ?, 'purchase', ?, 'completed')",
-                (user_id, price_int, f"خرید {plan_name}")
-            )
-            await db.commit()
-        
-        balance_new = balance - price_int
-        
-        await callback.message.edit_text(
-            f"✅ خرید شما با موفقیت انجام شد!\n\n"
-            f"📅 مدت: ۱ ماهه\n"
-            f"📊 حجم: {volume}\n"
-            f"💰 قیمت: {price_int:,} تومان\n"
-            f"💰 موجودی جدید: {balance_new:,} تومان\n"
-            f"📆 تاریخ انقضا: {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}\n\n"
-            f"⏳ کانفیگ به زودی توسط ادمین ارسال خواهد شد."
-        )
-        
-        await notify_admin_service(user_id, plan_name, price_int, volume)
-        
-    except Exception as e:
-        await callback.message.edit_text(f"❌ خطا: {str(e)}")
+    # ========== ذخیره اطلاعات تعرفه در FSM ==========
+    await state.update_data(
+        price=price_int,
+        volume=volume,
+        plan_name=plan_name,
+        user_id=user_id,
+        final_price=price_int  # قیمت نهایی = قیمت اصلی (تا زمانی که تخفیف اعمال نشده)
+    )
+    
+    # ========== پرسش از کاربر برای کد تخفیف ==========
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🎟 اعمال کد تخفیف", callback_data="apply_discount")],
+        [types.InlineKeyboardButton(text="⏭ ادامه بدون تخفیف", callback_data="no_discount")]
+    ])
+    
+    await callback.message.edit_text(
+        f"🛒 تعرفه انتخاب شده:\n\n"
+        f"📅 مدت: ۱ ماهه\n"
+        f"📊 حجم: {volume}\n"
+        f"💰 قیمت: {price_int:,} تومان\n\n"
+        f"آیا کد تخفیف دارید؟",
+        reply_markup=keyboard
+    )
+
+# ========== مدیریت دکمه‌های تخفیف در خرید ==========
+@dp.callback_query(lambda c: c.data == "apply_discount")
+async def apply_discount_callback(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(DiscountStates.waiting_for_discount_in_purchase)
+    await callback.message.edit_text(
+        "🎟 لطفاً کد تخفیف خود را وارد کنید:\n"
+        "مثال: SUMMER10\n\n"
+        "💡 برای انصراف، /cancel را وارد کنید."
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "no_discount")
+async def no_discount_callback(callback: CallbackQuery, state: FSMContext):
+    await process_purchase(callback.message, state, callback=callback)
 
 # ========== دکمه‌های بازگشت ==========
 @dp.callback_query(lambda c: c.data == "back_to_duration")
