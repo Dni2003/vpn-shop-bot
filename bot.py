@@ -140,7 +140,7 @@ async def charge_command(message: Message, state: FSMContext):
         "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"
     )
 
-# ========== دستور /add_balance (فقط ادمین) ==========
+# ========== دستورات ادمین ==========
 @dp.message(Command("add_balance"))
 async def add_balance_command(message: Message):
     if not await is_admin(message.from_user.id):
@@ -177,7 +177,16 @@ async def add_balance_command(message: Message):
     
     await message.answer(f"✅ مبلغ {amount:,} تومان به کاربر {user_id} اضافه شد!")
 
-# ========== دستور /send (ارسال کانفیگ توسط ادمین) ==========
+@dp.message(Command("admin"))
+async def admin_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
+        return
+    await message.answer(
+        "👋 به پنل مدیریت خوش اومدی!",
+        reply_markup=admin_panel_keyboard()
+    )
+
 @dp.message(Command("send"))
 async def send_config_to_user(message: Message):
     if not await is_admin(message.from_user.id):
@@ -445,6 +454,7 @@ async def handle_charge_request(callback: CallbackQuery):
     request_id = int(parts[2])
     
     async with aiosqlite.connect(DB_PATH) as db:
+        # دریافت اطلاعات درخواست
         cursor = await db.execute(
             "SELECT user_id, amount FROM charge_requests WHERE id = ? AND status = 'pending'",
             (request_id,)
@@ -452,14 +462,25 @@ async def handle_charge_request(callback: CallbackQuery):
         request = await cursor.fetchone()
         
         if not request:
-            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده.")
+            try:
+                await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
+            except TelegramBadRequest:
+                await callback.message.answer("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
             await callback.answer()
             return
         
         user_id, amount = request
+        logger.info(f"📝 درخواست {request_id}: کاربر {user_id} به مبلغ {amount} تومان")
+        
+        # دریافت موجودی فعلی
+        cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        result = await cursor.fetchone()
+        old_balance = result[0] if result else 0
+        logger.info(f"💰 موجودی فعلی کاربر {user_id}: {old_balance} تومان")
         
         if action == "approve":
             try:
+                # افزایش موجودی
                 await db.execute(
                     "UPDATE users SET balance = balance + ? WHERE id = ?",
                     (amount, user_id)
@@ -469,48 +490,67 @@ async def handle_charge_request(callback: CallbackQuery):
                     (request_id,)
                 )
                 await db.commit()
+                logger.info(f"✅ کوئری‌ها با موفقیت اجرا و commit شدند.")
                 
-                await bot.send_message(
-                    user_id,
-                    f"✅ درخواست شارژ {amount:,} تومان تأیید شد!"
-                )
+                # دریافت موجودی جدید
+                cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+                new_balance = (await cursor.fetchone())[0] or 0
+                logger.info(f"💰 موجودی جدید کاربر {user_id}: {new_balance} تومان")
                 
-                await callback.message.edit_text(
-                    f"✅ درخواست {request_id} تأیید شد.\n"
-                    f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد."
-                )
+                # ارسال پیام به کاربر
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"✅ درخواست شارژ شما به مبلغ {amount:,} تومان تأیید شد!\n"
+                        f"💰 موجودی جدید شما: {new_balance:,} تومان"
+                    )
+                except Exception as e:
+                    logger.error(f"❌ خطا در ارسال پیام به کاربر: {e}")
+                
+                try:
+                    await callback.message.edit_text(
+                        f"✅ درخواست {request_id} تأیید شد.\n"
+                        f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد.\n"
+                        f"💰 موجودی قبلی: {old_balance:,} تومان\n"
+                        f"💰 موجودی جدید: {new_balance:,} تومان"
+                    )
+                except TelegramBadRequest:
+                    await callback.message.answer(
+                        f"✅ درخواست {request_id} تأیید شد.\n"
+                        f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد.\n"
+                        f"💰 موجودی قبلی: {old_balance:,} تومان\n"
+                        f"💰 موجودی جدید: {new_balance:,} تومان"
+                    )
                 
             except Exception as e:
-                await callback.message.edit_text(f"❌ خطا: {str(e)}")
+                logger.error(f"❌ خطا در تأیید درخواست: {e}")
+                await callback.message.edit_text(f"❌ خطا در تأیید درخواست:\n{str(e)}")
                 await callback.answer()
                 return
         else:
+            # رد درخواست
             await db.execute(
                 "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (request_id,)
             )
             await db.commit()
             
-            await bot.send_message(
-                user_id,
-                f"❌ درخواست شارژ {amount:,} تومان رد شد."
-            )
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"❌ درخواست شارژ شما به مبلغ {amount:,} تومان رد شد."
+                )
+            except:
+                pass
             
-            await callback.message.edit_text(f"❌ درخواست {request_id} رد شد.")
+            try:
+                await callback.message.edit_text(f"❌ درخواست {request_id} رد شد.")
+            except TelegramBadRequest:
+                await callback.message.answer(f"❌ درخواست {request_id} رد شد.")
     
     await callback.answer()
 
-# ========== دستورات ادمین ==========
-@dp.message(Command("admin"))
-async def admin_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی به این بخش ندارید.")
-        return
-    await message.answer(
-        "👋 به پنل مدیریت خوش اومدی!",
-        reply_markup=admin_panel_keyboard()
-    )
-
+# ========== مدیریت دکمه‌های پنل ادمین ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
 async def admin_callback(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
