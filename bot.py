@@ -205,8 +205,8 @@ async def start_command(message: Message):
     
     await message.answer(
         f"👋 سلام {user.first_name}!\n"
-        "به ربات فروش VPN خوش اومدی! 🌟\n\n"
-        "از دکمه‌های زیر استفاده کن:"
+        "به ربات خرید فیلترشکن خوش آمدید ❗️\n"
+        "جهت خرید فیلترشکن از دکمه‌های زیر استفاده کنید:"
         f"{expiry_message}",
         reply_markup=main_menu_keyboard()
     )
@@ -215,10 +215,10 @@ async def start_command(message: Message):
 async def help_command(message: Message):
     await message.answer(
         "🤖 راهنمای ربات:\n\n"
-        "1️⃣ برای خرید اشتراک از /buy استفاده کن.\n"
-        "2️⃣ موجودی خودت رو با /balance ببین.\n"
-        "3️⃣ برای شارژ کیف پول از /charge استفاده کن.\n"
-        "4️⃣ اگه سوالی داری /support بزن."
+        "1️⃣ برای خرید سرویس از دکمه 🛒 خرید فیلترشکن جدید استفاده کن.\n"
+        "2️⃣ موجودی خودت رو با 👤 حساب کاربری ببین.\n"
+        "3️⃣ برای شارژ کیف پول از 💳 شارژ کیف پول استفاده کن.\n"
+        "4️⃣ اگه سوالی داری 📞 پشتیبانی ربات رو بزن."
     )
 
 @dp.message(Command("buy"))
@@ -270,6 +270,51 @@ async def charge_command(message: Message, state: FSMContext):
         "مثلاً: 100000\n\n"
         "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"
     )
+
+@dp.message(Command("my_services"))
+async def my_services_command(message: Message):
+    user_id = message.from_user.id
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT plan_name, volume, price, expires_at, status FROM service_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 5",
+            (user_id,)
+        )
+        services = await cursor.fetchall()
+    
+    if not services:
+        await message.answer("📭 شما هیچ سرویس فعال یا قبلی ندارید.")
+        return
+    
+    text = "📦 لیست سرویس‌های شما (۵ مورد آخر):\n\n"
+    for service in services:
+        plan_name, volume, price, expires_at, status = service
+        
+        if status == "active":
+            try:
+                expire_date = datetime.fromisoformat(expires_at)
+                days_left = (expire_date - datetime.now()).days
+                if days_left < 0:
+                    status_emoji = "⛔ منقضی شده"
+                else:
+                    status_emoji = f"✅ فعال ({days_left} روز)"
+            except:
+                status_emoji = "✅ فعال"
+        elif status == "pending":
+            status_emoji = "⏳ در انتظار ارسال کانفیگ"
+        elif status == "sent":
+            status_emoji = "📤 کانفیگ ارسال شده"
+        else:
+            status_emoji = "❓ نامشخص"
+        
+        text += f"📌 {plan_name}\n"
+        text += f"   📊 حجم: {volume}\n"
+        text += f"   💰 قیمت: {price:,} تومان\n"
+        text += f"   📆 وضعیت: {status_emoji}\n"
+        text += f"   🕒 انقضا: {expires_at or 'نامشخص'}\n"
+        text += "─" * 20 + "\n"
+    
+    await message.answer(text)
 
 # ========== دستورات ادمین ==========
 @dp.message(Command("add_balance"))
@@ -409,76 +454,37 @@ async def cancel_command(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ عملیات لغو شد.")
 
-@dp.message(Command("my_services"))
-async def my_services_command(message: Message):
-    user_id = message.from_user.id
+# ========== مدیریت منوی اصلی (دکمه‌های اینلاین) ==========
+@dp.callback_query(lambda c: c.data.startswith("menu_"))
+async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
+    if callback.data == "menu_buy":
+        await buy_command(callback.message)
+        await callback.message.delete()
+        await callback.answer()
     
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT plan_name, volume, price, expires_at, status FROM service_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 5",
-            (user_id,)
-        )
-        services = await cursor.fetchall()
+    elif callback.data == "menu_account":
+        await balance_command(callback.message)
+        await callback.message.delete()
+        await callback.answer()
     
-    if not services:
-        await message.answer("📭 شما هیچ سرویس فعال یا قبلی ندارید.")
-        return
+    elif callback.data == "menu_services":
+        await my_services_command(callback.message)
+        await callback.message.delete()
+        await callback.answer()
     
-    text = "📦 لیست سرویس‌های شما (۵ مورد آخر):\n\n"
-    for service in services:
-        plan_name, volume, price, expires_at, status = service
-        
-        # تعیین وضعیت
-        if status == "active":
-            try:
-                expire_date = datetime.fromisoformat(expires_at)
-                days_left = (expire_date - datetime.now()).days
-                if days_left < 0:
-                    status_emoji = "⛔ منقضی شده"
-                else:
-                    status_emoji = f"✅ فعال ({days_left} روز)"
-            except:
-                status_emoji = "✅ فعال"
-        elif status == "pending":
-            status_emoji = "⏳ در انتظار ارسال کانفیگ"
-        elif status == "sent":
-            status_emoji = "📤 کانفیگ ارسال شده"
-        else:
-            status_emoji = "❓ نامشخص"
-        
-        text += f"📌 {plan_name}\n"
-        text += f"   📊 حجم: {volume}\n"
-        text += f"   💰 قیمت: {price:,} تومان\n"
-        text += f"   📆 وضعیت: {status_emoji}\n"
-        text += f"   🕒 انقضا: {expires_at or 'نامشخص'}\n"
-        text += "─" * 20 + "\n"
+    elif callback.data == "menu_support":
+        await support_command(callback.message)
+        await callback.message.delete()
+        await callback.answer()
     
-    await message.answer(text)
-
-# ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
-@dp.message(lambda message: message.text == "🛒 خرید سرویس")
-async def handle_buy_button(message: Message):
-    await buy_command(message)
-
-@dp.message(lambda message: message.text == "📥 سرویس‌های من")
-async def handle_my_services_button(message: Message):
-    await my_services_command(message)
-
-@dp.message(lambda message: message.text == "👤 حساب کاربری")
-async def handle_balance_button(message: Message):
-    await balance_command(message)
-
-@dp.message(lambda message: message.text == "💳 افزایش موجودی")
-async def handle_charge_button(message: Message, state: FSMContext):
-    await charge_command(message, state)
-
-@dp.message(lambda message: message.text == "📞 پشتیبانی")
-async def handle_support_button(message: Message):
-    await support_command(message)
-
-@dp.message(lambda message: message.text == "ℹ️ راهنما")
-async def handle_help_button(message: Message):
-    await help_command(message)
+    elif callback.data == "menu_charge":
+        await charge_command(callback.message, state)
+        await callback.message.delete()
+        await callback.answer()
+    
+    elif callback.data == "menu_close":
+        await callback.message.delete()
+        await callback.answer()
 
 # ========== سیستم شارژ کیف پول (FSM) ==========
 @dp.message(ChargeStates.waiting_for_amount)
@@ -596,12 +602,12 @@ async def discount_value_handler(message: Message, state: FSMContext):
 @dp.message(DiscountStates.waiting_for_max_uses)
 async def discount_max_uses_handler(message: Message, state: FSMContext):
     from admin import discount_process_max_uses
-    await discount_process_max_uses(message, state)  # ✅ اصلاح شد
+    await discount_process_max_uses(message, state)
 
 @dp.message(DiscountStates.waiting_for_days)
 async def discount_days_handler(message: Message, state: FSMContext):
     from admin import discount_process_days
-    await discount_process_days(message, state)  # ✅ اصلاح شد
+    await discount_process_days(message, state)
 
 # ========== سیستم تخفیف - اعمال در خرید توسط کاربر (FSM) ==========
 @dp.message(DiscountStates.waiting_for_discount_in_purchase)
@@ -617,17 +623,14 @@ async def process_discount_code_in_purchase(message: Message, state: FSMContext)
     volume = data.get("volume")
     plan_name = data.get("plan_name")
     
-    # ========== اعتبارسنجی کد ==========
     result = await validate_discount_code(message.text, user_id)
     
     if not result["valid"]:
         await message.answer(result["message"])
         return
     
-    # ========== اعمال تخفیف ==========
     new_price = await apply_discount(original_price, result["discount_type"], result["discount_value"])
     
-    # ذخیره کد تخفیف در state
     await state.update_data(
         discount_code=message.text.upper(),
         discount_code_id=result["code_id"],
@@ -636,7 +639,6 @@ async def process_discount_code_in_purchase(message: Message, state: FSMContext)
         final_price=new_price
     )
     
-    # ========== نمایش قیمت جدید ==========
     discount_text = f"{result['discount_value']}%" if result["discount_type"] == "percent" else f"{result['discount_value']:,} تومان"
     
     await message.answer(
@@ -647,7 +649,6 @@ async def process_discount_code_in_purchase(message: Message, state: FSMContext)
         f"⏳ در حال بررسی موجودی..."
     )
     
-    # ========== ادامه فرآیند خرید ==========
     await process_purchase(message, state)
 
 # ========== مدیریت خرید (۳ مرحله) ==========
@@ -689,7 +690,6 @@ async def buy_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     plan_name = f"۱ ماهه - {volume}"
     
-    # ========== ذخیره اطلاعات تعرفه در FSM ==========
     await state.update_data(
         price=price_int,
         volume=volume,
@@ -698,7 +698,6 @@ async def buy_callback(callback: CallbackQuery, state: FSMContext):
         final_price=price_int
     )
     
-    # ========== پرسش از کاربر برای کد تخفیف ==========
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="🎟 اعمال کد تخفیف", callback_data="apply_discount")],
         [types.InlineKeyboardButton(text="⏭ ادامه بدون تخفیف", callback_data="no_discount")]
@@ -747,8 +746,7 @@ async def back_to_user_count(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "back_to_main")
 async def back_to_main(callback: CallbackQuery):
-    await callback.message.delete()
-    await callback.message.answer(
+    await callback.message.edit_text(
         "🔙 به منوی اصلی برگشتید.",
         reply_markup=main_menu_keyboard()
     )
