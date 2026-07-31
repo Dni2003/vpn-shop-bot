@@ -273,7 +273,6 @@ async def search_trans_command(message: Message):
         await message.answer("❌ لطفاً یک آیدی عددی وارد کن.")
         return
     
-    # نمایش تراکنش‌های کاربر
     from admin import to_tehran_time
     try:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -301,6 +300,111 @@ async def search_trans_command(message: Message):
         
         await message.answer(text)
         
+    except Exception as e:
+        await message.answer(f"❌ خطا: {str(e)}")
+
+# ========== دستور ارسال پیام گروهی (ادمین) ==========
+@dp.message(Command("broadcast"))
+async def broadcast_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        return
+    
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "❌ فرمت صحیح:\n"
+            "/broadcast [متن پیام]\n\n"
+            "می‌توانید از مارک‌داون استفاده کنید."
+        )
+        return
+    
+    text = args[1]
+    
+    # دریافت لیست کاربران
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT id FROM users")
+        users = await cursor.fetchall()
+    
+    if not users:
+        await message.answer("❌ هیچ کاربری در دیتابیس وجود ندارد.")
+        return
+    
+    sent = 0
+    failed = 0
+    
+    # ارسال پیام به کاربران
+    await message.answer(f"⏳ در حال ارسال پیام به {len(users)} کاربر...")
+    
+    for user in users:
+        try:
+            await bot.send_message(user[0], text)
+            sent += 1
+        except:
+            failed += 1
+        await asyncio.sleep(0.05)  # جلوگیری از محدودیت تلگرام
+    
+    await message.answer(
+        f"✅ پیام گروهی ارسال شد!\n\n"
+        f"📨 ارسال شده: {sent}\n"
+        f"❌ ناموفق: {failed}"
+    )
+
+# ========== دستور ایجاد کد تخفیف (ادمین) ==========
+@dp.message(Command("create_discount"))
+async def create_discount_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        return
+    
+    args = message.text.split()
+    if len(args) < 5:
+        await message.answer(
+            "❌ فرمت صحیح:\n"
+            "/create_discount [code] [percent/fixed] [value] [max_uses] [days]\n"
+            "مثال: /create_discount SUMMER10 percent 10 5 30"
+        )
+        return
+    
+    code = args[1].upper()
+    discount_type = args[2].lower()
+    try:
+        discount_value = int(args[3])
+        max_uses = int(args[4])
+        days = int(args[5]) if len(args) > 5 else 0
+    except ValueError:
+        await message.answer("❌ لطفاً مقادیر عددی را به‌درستی وارد کنید.")
+        return
+    
+    if discount_type not in ["percent", "fixed"]:
+        await message.answer("❌ نوع تخفیف باید percent یا fixed باشد.")
+        return
+    
+    if discount_type == "percent" and discount_value > 100:
+        await message.answer("❌ تخفیف درصدی نمی‌تواند بیشتر از ۱۰۰ باشد.")
+        return
+    
+    expires_at = None
+    if days > 0:
+        expires_at = (datetime.now() + timedelta(days=days)).isoformat()
+    
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO discount_codes (code, discount_type, discount_value, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)",
+                (code, discount_type, discount_value, max_uses, expires_at)
+            )
+            await db.commit()
+        
+        await message.answer(
+            f"✅ کد تخفیف {code} با موفقیت ایجاد شد!\n\n"
+            f"📊 نوع: {'درصد' if discount_type == 'percent' else 'مبلغ ثابت'}\n"
+            f"💰 مقدار: {discount_value} {'درصد' if discount_type == 'percent' else 'تومان'}\n"
+            f"📌 تعداد استفاده: {max_uses}\n"
+            f"📅 انقضا: {expires_at or 'نامحدود'}"
+        )
+    except aiosqlite.IntegrityError:
+        await message.answer("❌ این کد قبلاً استفاده شده است.")
     except Exception as e:
         await message.answer(f"❌ خطا: {str(e)}")
 
@@ -683,14 +787,19 @@ async def handle_charge_request(callback: CallbackQuery):
     
     await callback.answer("✅ عملیات با موفقیت انجام شد.")
 
-# ========== مدیریت دکمه‌های پنل ادمین و تراکنش‌ها ==========
-@dp.callback_query(lambda c: c.data and (c.data.startswith("admin_") or c.data.startswith("trans_")))
+# ========== مدیریت دکمه‌های پنل ادمین و تراکنش‌ها و تخفیف‌ها ==========
+@dp.callback_query(lambda c: c.data and (
+    c.data.startswith("admin_") or 
+    c.data.startswith("trans_") or 
+    c.data.startswith("broadcast_") or 
+    c.data.startswith("discount_")
+))
 async def admin_trans_callback(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
     
-    # مدیریت بخش ادمین
+    # ========== مدیریت بخش ادمین ==========
     if callback.data.startswith("admin_"):
         if callback.data == "admin_users":
             from admin import admin_users
@@ -710,25 +819,52 @@ async def admin_trans_callback(callback: CallbackQuery):
         elif callback.data == "admin_transactions":
             from admin import admin_transactions
             await admin_transactions(callback)
+        elif callback.data == "admin_broadcast":
+            from admin import admin_broadcast
+            await admin_broadcast(callback)
+        elif callback.data == "admin_discounts":
+            from admin import admin_discounts
+            await admin_discounts(callback)
         else:
             await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
         return
     
-    # مدیریت تراکنش‌ها
-    if callback.data == "trans_all":
-        from admin import show_transactions
-        await show_transactions(callback)
-    elif callback.data == "trans_deposit":
-        from admin import show_transactions
-        await show_transactions(callback, trans_type="deposit")
-    elif callback.data == "trans_purchase":
-        from admin import show_transactions
-        await show_transactions(callback, trans_type="purchase")
-    elif callback.data == "trans_search_user":
-        from admin import trans_search_user
-        await trans_search_user(callback)
-    else:
-        await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+    # ========== مدیریت تراکنش‌ها ==========
+    if callback.data.startswith("trans_"):
+        if callback.data == "trans_all":
+            from admin import show_transactions
+            await show_transactions(callback)
+        elif callback.data == "trans_deposit":
+            from admin import show_transactions
+            await show_transactions(callback, trans_type="deposit")
+        elif callback.data == "trans_purchase":
+            from admin import show_transactions
+            await show_transactions(callback, trans_type="purchase")
+        elif callback.data == "trans_search_user":
+            from admin import trans_search_user
+            await trans_search_user(callback)
+        else:
+            await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+        return
+    
+    # ========== مدیریت ارسال پیام گروهی ==========
+    if callback.data.startswith("broadcast_"):
+        from admin import broadcast_to_users
+        filter_type = callback.data.split("_")[1] if len(callback.data.split("_")) > 1 else "all"
+        await broadcast_to_users(callback, filter_type)
+        return
+    
+    # ========== مدیریت تخفیف‌ها ==========
+    if callback.data.startswith("discount_"):
+        if callback.data == "discount_create":
+            from admin import discount_create
+            await discount_create(callback)
+        elif callback.data == "discount_list":
+            from admin import discount_list
+            await discount_list(callback)
+        else:
+            await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+        return
 
 # ========== اجرای اصلی ==========
 async def main():
@@ -744,106 +880,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-# ========== دستور ایجاد کد تخفیف (ادمین) ==========
-@dp.message(Command("create_discount"))
-async def create_discount_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی ندارید.")
-        return
-    
-    args = message.text.split()
-    if len(args) < 5:
-        await message.answer(
-            "❌ فرمت صحیح:\n"
-            "/create_discount [code] [percent/fixed] [value] [max_uses] [days]\n"
-            "مثال: /create_discount SUMMER10 percent 10 5 30"
-        )
-        return
-    
-    code = args[1].upper()
-    discount_type = args[2].lower()
-    try:
-        discount_value = int(args[3])
-        max_uses = int(args[4])
-        days = int(args[5]) if len(args) > 5 else 0
-    except ValueError:
-        await message.answer("❌ لطفاً مقادیر عددی را به‌درستی وارد کنید.")
-        return
-    
-    if discount_type not in ["percent", "fixed"]:
-        await message.answer("❌ نوع تخفیف باید percent یا fixed باشد.")
-        return
-    
-    if discount_type == "percent" and discount_value > 100:
-        await message.answer("❌ تخفیف درصدی نمی‌تواند بیشتر از ۱۰۰ باشد.")
-        return
-    
-    expires_at = None
-    if days > 0:
-        expires_at = (datetime.now() + timedelta(days=days)).isoformat()
-    
-    try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "INSERT INTO discount_codes (code, discount_type, discount_value, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (code, discount_type, discount_value, max_uses, expires_at)
-            )
-            await db.commit()
-        
-        await message.answer(
-            f"✅ کد تخفیف {code} با موفقیت ایجاد شد!\n\n"
-            f"📊 نوع: {'درصد' if discount_type == 'percent' else 'مبلغ ثابت'}\n"
-            f"💰 مقدار: {discount_value} {'درصد' if discount_type == 'percent' else 'تومان'}\n"
-            f"📌 تعداد استفاده: {max_uses}\n"
-            f"📅 انقضا: {expires_at or 'نامحدود'}"
-        )
-    except aiosqlite.IntegrityError:
-        await message.answer("❌ این کد قبلاً استفاده شده است.")
-    except Exception as e:
-        await message.answer(f"❌ خطا: {str(e)}")
-
-# ========== دستور ارسال پیام گروهی (ادمین) ==========
-@dp.message(Command("broadcast"))
-async def broadcast_command(message: Message):
-    if not await is_admin(message.from_user.id):
-        await message.answer("⛔ شما دسترسی ندارید.")
-        return
-    
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "❌ فرمت صحیح:\n"
-            "/broadcast [متن پیام]\n\n"
-            "می‌توانید از مارک‌داون استفاده کنید."
-        )
-        return
-    
-    text = args[1]
-    
-    # دریافت لیست کاربران
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT id FROM users")
-        users = await cursor.fetchall()
-    
-    if not users:
-        await message.answer("❌ هیچ کاربری در دیتابیس وجود ندارد.")
-        return
-    
-    sent = 0
-    failed = 0
-    
-    # ارسال پیام به کاربران
-    for user in users:
-        try:
-            await bot.send_message(user[0], text)
-            sent += 1
-        except:
-            failed += 1
-        await asyncio.sleep(0.05)  # جلوگیری از محدودیت تلگرام
-    
-    await message.answer(
-        f"✅ پیام گروهی ارسال شد!\n\n"
-        f"📨 ارسال شده: {sent}\n"
-        f"❌ ناموفق: {failed}"
-)
