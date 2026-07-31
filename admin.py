@@ -5,11 +5,14 @@ from aiogram.fsm.context import FSMContext
 from config import config
 from datetime import datetime, timedelta
 
+# ========== Import State classes ==========
+from broadcast_states import BroadcastStates
+from discount_states import DiscountStates
+
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 # ========== تابع تبدیل زمان به ایران ==========
 def to_tehran_time(utc_str: str) -> str:
-    """تبدیل زمان UTC به زمان ایران (UTC+3:30)"""
     try:
         utc_time = datetime.fromisoformat(utc_str)
         tehran_time = utc_time + timedelta(hours=3, minutes=30)
@@ -270,7 +273,6 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
 async def broadcast_to_users(callback: CallbackQuery, state: FSMContext, filter_type: str):
     """ذخیره فیلتر و شروع فرآیند ارسال پیام"""
     await state.update_data(filter_type=filter_type)
-    from broadcast_states import BroadcastStates
     await state.set_state(BroadcastStates.waiting_for_text)
     await callback.message.edit_text(
         "✍️ لطفاً متن پیام را ارسال کنید.\n"
@@ -278,10 +280,10 @@ async def broadcast_to_users(callback: CallbackQuery, state: FSMContext, filter_
     )
     await callback.answer()
 
-# ========== مدیریت تخفیف‌ها ==========
+# ========== مدیریت تخفیف‌ها (روش ساده مرحله‌ای) ==========
 async def admin_discounts(callback: CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="➕ ایجاد کد تخفیف جدید", callback_data="discount_create")],
+        [types.InlineKeyboardButton(text="➕ ایجاد کد تخفیف جدید", callback_data="discount_create_simple")],
         [types.InlineKeyboardButton(text="📋 لیست کدهای تخفیف", callback_data="discount_list")],
         [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")]
     ])
@@ -291,6 +293,123 @@ async def admin_discounts(callback: CallbackQuery):
         reply_markup=keyboard
     )
     await callback.answer()
+
+async def discount_create_simple(callback: CallbackQuery, state: FSMContext):
+    """مرحله ۱: دریافت کد تخفیف"""
+    await state.set_state(DiscountStates.waiting_for_code)
+    await callback.message.edit_text(
+        "🎟 مرحله ۱ از ۵:\n\n"
+        "📝 لطفاً کد تخفیف را وارد کنید:\n"
+        "مثال: SUMMER10"
+    )
+    await callback.answer()
+
+async def discount_process_code(message: Message, state: FSMContext):
+    """مرحله ۲: دریافت نوع تخفیف"""
+    code = message.text.upper().strip()
+    await state.update_data(code=code)
+    await state.set_state(DiscountStates.waiting_for_type)
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🔢 درصدی", callback_data="discount_type_percent")],
+        [types.InlineKeyboardButton(text="💰 مبلغ ثابت", callback_data="discount_type_fixed")]
+    ])
+    await message.answer(
+        f"🎟 مرحله ۲ از ۵:\n\n"
+        f"📝 کد: {code}\n\n"
+        "نوع تخفیف را انتخاب کنید:",
+        reply_markup=keyboard
+    )
+
+async def discount_process_type(callback: CallbackQuery, state: FSMContext):
+    """مرحله ۳: دریافت مقدار تخفیف"""
+    discount_type = callback.data.split("_")[2]  # percent یا fixed
+    await state.update_data(discount_type=discount_type)
+    await state.set_state(DiscountStates.waiting_for_value)
+    
+    type_text = "درصد" if discount_type == "percent" else "تومان"
+    await callback.message.edit_text(
+        f"🎟 مرحله ۳ از ۵:\n\n"
+        f"📝 نوع: {type_text}\n\n"
+        f"💰 مقدار تخفیف را به {type_text} وارد کنید:\n"
+        f"{'مثال: 10 (برای ۱۰%)' if discount_type == 'percent' else 'مثال: 50000 (برای ۵۰,۰۰۰ تومان)'}"
+    )
+    await callback.answer()
+
+async def discount_process_value(message: Message, state: FSMContext):
+    """مرحله ۴: دریافت تعداد استفاده"""
+    try:
+        value = int(message.text)
+        data = await state.get_data()
+        if data.get("discount_type") == "percent" and value > 100:
+            await message.answer("❌ تخفیف درصدی نمی‌تواند بیشتر از ۱۰۰ باشد. لطفاً مجدداً وارد کنید.")
+            return
+        await state.update_data(value=value)
+        await state.set_state(DiscountStates.waiting_for_max_uses)
+        await message.answer(
+            f"🎟 مرحله ۴ از ۵:\n\n"
+            f"📝 مقدار: {value}\n\n"
+            f"📌 تعداد دفعاتی که این کد قابل استفاده است را وارد کنید:\n"
+            f"مثال: 5 (یعنی ۵ نفر می‌توانند استفاده کنند)"
+        )
+    except ValueError:
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
+
+async def discount_process_max_uses(message: Message, state: FSMContext):
+    """مرحله ۵: دریافت روزهای اعتبار"""
+    try:
+        max_uses = int(message.text)
+        await state.update_data(max_uses=max_uses)
+        await state.set_state(DiscountStates.waiting_for_days)
+        await message.answer(
+            f"🎟 مرحله ۵ از ۵ (آخرین مرحله):\n\n"
+            f"📌 تعداد استفاده: {max_uses}\n\n"
+            f"📅 تعداد روزهای اعتبار کد را وارد کنید:\n"
+            f"مثال: 30 (یعنی ۳۰ روز اعتبار دارد)\n"
+            f"💡 عدد ۰ به معنای نامحدود است."
+        )
+    except ValueError:
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
+
+async def discount_process_days(message: Message, state: FSMContext):
+    """مرحله نهایی: ایجاد کد تخفیف"""
+    try:
+        days = int(message.text)
+        data = await state.get_data()
+        code = data.get("code")
+        discount_type = data.get("discount_type")
+        value = data.get("value")
+        max_uses = data.get("max_uses")
+        
+        expires_at = None
+        if days > 0:
+            expires_at = (datetime.now() + timedelta(days=days)).isoformat()
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO discount_codes (code, discount_type, discount_value, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)",
+                (code, discount_type, value, max_uses, expires_at)
+            )
+            await db.commit()
+        
+        type_text = "درصد" if discount_type == "percent" else "مبلغ ثابت"
+        await message.answer(
+            f"✅ کد تخفیف با موفقیت ایجاد شد!\n\n"
+            f"🎟 کد: {code}\n"
+            f"📊 نوع: {type_text}\n"
+            f"💰 مقدار: {value} {'' if discount_type == 'percent' else 'تومان'}\n"
+            f"📌 تعداد استفاده: {max_uses}\n"
+            f"📅 انقضا: {expires_at or 'نامحدود'}"
+        )
+        await state.clear()
+        
+    except aiosqlite.IntegrityError:
+        await message.answer("❌ این کد قبلاً استفاده شده است. لطفاً کد دیگری وارد کنید.")
+    except ValueError:
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
+    except Exception as e:
+        await message.answer(f"❌ خطا: {str(e)}")
+        await state.clear()
 
 async def discount_list(callback: CallbackQuery):
     try:
@@ -325,14 +444,3 @@ async def discount_list(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
-
-async def discount_create(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🎟 ایجاد کد تخفیف جدید:\n\n"
-        "لطفاً اطلاعات را به فرمت زیر وارد کنید:\n"
-        "`/create_discount [code] [percent/fixed] [value] [max_uses] [days]`\n\n"
-        "مثال:\n"
-        "`/create_discount SUMMER10 percent 10 5 30`\n"
-        "💡 days = تعداد روز اعتبار (اختیاری - 0 = نامحدود)"
-    )
-    await callback.answer()
