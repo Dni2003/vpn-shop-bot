@@ -255,6 +255,55 @@ async def send_config_to_user(message: Message):
     except Exception as e:
         await message.answer(f"❌ خطا در ارسال کانفیگ: {str(e)}")
 
+# ========== دستور جستجوی تراکنش کاربر ==========
+@dp.message(Command("search_trans"))
+async def search_trans_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        return
+    
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("❌ فرمت صحیح:\n/search_trans [USER_ID]")
+        return
+    
+    try:
+        user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ لطفاً یک آیدی عددی وارد کن.")
+        return
+    
+    # نمایش تراکنش‌های کاربر
+    from admin import to_tehran_time
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT id, amount, type, description, status, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
+                (user_id,)
+            )
+            transactions = await cursor.fetchall()
+        
+        if not transactions:
+            await message.answer(f"📭 کاربر {user_id} هیچ تراکنشی ندارد.")
+            return
+        
+        text = f"📋 تراکنش‌های کاربر {user_id} (۲۰ مورد آخر):\n\n"
+        for trans in transactions:
+            trans_id, amount, trans_type, desc, status, created_at = trans
+            local_time = to_tehran_time(created_at)
+            type_emoji = "💳" if trans_type == "deposit" else "🛒"
+            status_emoji = "✅" if status == "completed" else "⏳" if status == "pending" else "❌"
+            
+            text += f"{type_emoji} #{trans_id} | {amount:,} تومان\n"
+            text += f"   {desc or '-'} | {status_emoji} {status}\n"
+            text += f"   🕒 {local_time}\n"
+            text += "─" * 20 + "\n"
+        
+        await message.answer(text)
+        
+    except Exception as e:
+        await message.answer(f"❌ خطا: {str(e)}")
+
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
 async def handle_buy_button(message: Message):
@@ -634,28 +683,50 @@ async def handle_charge_request(callback: CallbackQuery):
     
     await callback.answer("✅ عملیات با موفقیت انجام شد.")
 
-# ========== مدیریت دکمه‌های پنل ادمین ==========
-@dp.callback_query(lambda c: c.data and c.data.startswith("admin_"))
-async def admin_callback(callback: CallbackQuery):
+# ========== مدیریت دکمه‌های پنل ادمین و تراکنش‌ها ==========
+@dp.callback_query(lambda c: c.data and (c.data.startswith("admin_") or c.data.startswith("trans_")))
+async def admin_trans_callback(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
     
-    if callback.data == "admin_users":
-        from admin import admin_users
-        await admin_users(callback)
-    elif callback.data == "admin_stats":
-        from admin import admin_stats
-        await admin_stats(callback)
-    elif callback.data == "admin_add_balance":
-        from admin import admin_add_balance
-        await admin_add_balance(callback)
-    elif callback.data == "admin_charge_requests":
-        from admin import admin_charge_requests
-        await admin_charge_requests(callback)
-    elif callback.data == "admin_service_requests":
-        from admin import admin_service_requests
-        await admin_service_requests(callback)
+    # مدیریت بخش ادمین
+    if callback.data.startswith("admin_"):
+        if callback.data == "admin_users":
+            from admin import admin_users
+            await admin_users(callback)
+        elif callback.data == "admin_stats":
+            from admin import admin_stats
+            await admin_stats(callback)
+        elif callback.data == "admin_add_balance":
+            from admin import admin_add_balance
+            await admin_add_balance(callback)
+        elif callback.data == "admin_charge_requests":
+            from admin import admin_charge_requests
+            await admin_charge_requests(callback)
+        elif callback.data == "admin_service_requests":
+            from admin import admin_service_requests
+            await admin_service_requests(callback)
+        elif callback.data == "admin_transactions":
+            from admin import admin_transactions
+            await admin_transactions(callback)
+        else:
+            await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
+        return
+    
+    # مدیریت تراکنش‌ها
+    if callback.data == "trans_all":
+        from admin import show_transactions
+        await show_transactions(callback)
+    elif callback.data == "trans_deposit":
+        from admin import show_transactions
+        await show_transactions(callback, trans_type="deposit")
+    elif callback.data == "trans_purchase":
+        from admin import show_transactions
+        await show_transactions(callback, trans_type="purchase")
+    elif callback.data == "trans_search_user":
+        from admin import trans_search_user
+        await trans_search_user(callback)
     else:
         await callback.answer("⏳ این بخش در حال توسعه است.", show_alert=True)
 
