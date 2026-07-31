@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.exceptions import TelegramBadRequest
 
 from config import config
 from database import init_db
@@ -22,6 +23,7 @@ from charge_states import ChargeStates
 
 # ========== تنظیمات اولیه ==========
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 bot = Bot(token=config.BOT_TOKEN)
 storage = MemoryStorage()
@@ -31,7 +33,6 @@ DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 # ========== توابع کمکی ==========
 async def notify_admin(user_id: int, amount: int):
-    """ارسال نوتیفیکیشن به ادمین برای درخواست شارژ جدید"""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
         user = await cursor.fetchone()
@@ -52,7 +53,6 @@ async def notify_admin(user_id: int, amount: int):
             pass
 
 async def notify_admin_service(user_id: int, plan_name: str, price: int, volume: str):
-    """ارسال نوتیفیکیشن درخواست سرویس جدید به ادمین"""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
         user = await cursor.fetchone()
@@ -99,8 +99,7 @@ async def help_command(message: Message):
         "1️⃣ برای خرید اشتراک از /buy استفاده کن.\n"
         "2️⃣ موجودی خودت رو با /balance ببین.\n"
         "3️⃣ برای شارژ کیف پول از /charge استفاده کن.\n"
-        "4️⃣ اگه سوالی داری /support بزن.\n\n"
-        "💡 در حال توسعه! امکانات بیشتر به زودی..."
+        "4️⃣ اگه سوالی داری /support بزن."
     )
 
 @dp.message(Command("buy"))
@@ -120,8 +119,7 @@ async def balance_command(message: Message):
     
     await message.answer(
         f"💰 موجودی کیف پول شما:\n"
-        f"{balance:,} تومان\n\n"
-        "💳 برای شارژ کیف پول از دکمه زیر استفاده کن."
+        f"{balance:,} تومان"
     )
 
 @dp.message(Command("support"))
@@ -142,6 +140,44 @@ async def charge_command(message: Message, state: FSMContext):
         "🔹 حداقل مبلغ: ۱۰۰,۰۰۰ تومان"
     )
 
+# ========== دستور /add_balance (فقط ادمین) ==========
+@dp.message(Command("add_balance"))
+async def add_balance_command(message: Message):
+    if not await is_admin(message.from_user.id):
+        await message.answer("⛔ شما دسترسی ندارید.")
+        return
+    
+    args = message.text.split()
+    if len(args) != 3:
+        await message.answer(
+            "❌ فرمت صحیح:\n"
+            "/add_balance [USER_ID] [AMOUNT]\n"
+            "مثال: /add_balance 123456789 50000"
+        )
+        return
+    
+    try:
+        user_id = int(args[1])
+        amount = int(args[2])
+    except ValueError:
+        await message.answer("❌ لطفاً آیدی و مبلغ را به عدد وارد کن.")
+        return
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not await cursor.fetchone():
+            await message.answer("❌ کاربری با این آیدی پیدا نشد.")
+            return
+        
+        await db.execute(
+            "UPDATE users SET balance = balance + ? WHERE id = ?",
+            (amount, user_id)
+        )
+        await db.commit()
+    
+    await message.answer(f"✅ مبلغ {amount:,} تومان به کاربر {user_id} اضافه شد!")
+
+# ========== دستور /send (ارسال کانفیگ توسط ادمین) ==========
 @dp.message(Command("send"))
 async def send_config_to_user(message: Message):
     if not await is_admin(message.from_user.id):
@@ -167,7 +203,6 @@ async def send_config_to_user(message: Message):
             f"✅ لطفاً این کانفیگ رو در کلاینت خود وارد کن."
         )
         
-        # به‌روزرسانی وضعیت درخواست در دیتابیس
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "UPDATE service_requests SET status = 'sent' WHERE user_id = ? AND status = 'pending'",
@@ -207,7 +242,7 @@ async def process_charge_amount(message: Message, state: FSMContext):
     try:
         amount = int(message.text)
         if amount < 100000:
-            await message.answer("❌ حداقل مبلغ شارژ ۱۰۰,۰۰۰ تومان است. لطفاً مجدداً وارد کن.")
+            await message.answer("❌ حداقل مبلغ شارژ ۱۰۰,۰۰۰ تومان است.")
             return
         
         await state.update_data(amount=amount)
@@ -217,11 +252,10 @@ async def process_charge_amount(message: Message, state: FSMContext):
             f"🏦 شماره کارت جهت واریز:\n"
             f"`{config.CARD_NUMBER}`\n"
             f"👤 به نام: دانیال بدری\n\n"
-            "📸 لطفاً عکس رسید کارت به کارت خود را ارسال کنید.\n"
-            "⚠️ فقط عکس (JPEG/PNG) پذیرفته می‌شود."
+            "📸 لطفاً عکس رسید خود را ارسال کنید."
         )
     except ValueError:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کن (مثلاً 100000)")
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کن.")
 
 @dp.message(ChargeStates.waiting_for_receipt)
 async def process_charge_receipt(message: Message, state: FSMContext):
@@ -236,11 +270,10 @@ async def process_charge_receipt(message: Message, state: FSMContext):
     amount = data.get("amount")
     
     if not amount:
-        await message.answer("❌ خطا در پردازش. لطفاً دوباره تلاش کن.")
+        await message.answer("❌ خطا در پردازش.")
         await state.clear()
         return
     
-    # ذخیره در دیتابیس
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO charge_requests (user_id, amount, receipt_photo_id, status) VALUES (?, ?, ?, 'pending')",
@@ -252,11 +285,9 @@ async def process_charge_receipt(message: Message, state: FSMContext):
     
     await message.answer(
         "✅ رسید شما دریافت شد.\n\n"
-        "⏳ درخواست شما برای تأیید به ادمین ارسال شد.\n"
-        "به محض تأیید، موجودی کیف پول شما شارژ می‌شود."
+        "⏳ درخواست شما برای تأیید به ادمین ارسال شد."
     )
     
-    # نوتیفیکیشن به ادمین
     await notify_admin(message.from_user.id, amount)
 
 # ========== مدیریت خرید (۳ مرحله) ==========
@@ -279,8 +310,7 @@ async def select_user_count(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def buy_callback(callback: CallbackQuery):
-    # ========== پاسخ سریع به کاربر ==========
-    await callback.answer("✅ در حال بررسی درخواست...")
+    await callback.answer("✅ در حال بررسی...")
     
     data_parts = callback.data.split("_")
     if len(data_parts) < 4:
@@ -300,60 +330,44 @@ async def buy_callback(callback: CallbackQuery):
     plan_name = f"۱ ماهه - {volume}"
     
     try:
-        # ========== بررسی موجودی کاربر ==========
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
             result = await cursor.fetchone()
             balance = result[0] if result else 0
         
-        # ========== اگر موجودی کافی نبود ==========
         if balance < price_int:
             await callback.message.edit_text(
-                f"❌ موجودی حساب شما برای خرید سرویس کافی نمی‌باشد!\n\n"
-                f"💰 موجودی فعلی: {balance:,} تومان\n"
-                f"💳 قیمت سرویس: {price_int:,} تومان\n\n"
-                f"⚠️ لطفاً ابتدا حساب خود را شارژ کنید."
+                f"❌ موجودی کافی نیست!\n"
+                f"💰 موجودی: {balance:,} تومان\n"
+                f"💳 قیمت: {price_int:,} تومان\n\n"
+                f"⚠️ لطفاً حساب خود را شارژ کنید."
             )
-            await callback.answer()
             return
         
-        # ========== کسر مبلغ از موجودی ==========
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "UPDATE users SET balance = balance - ? WHERE id = ?",
                 (price_int, user_id)
             )
-            # ثبت درخواست سرویس
             await db.execute(
                 "INSERT INTO service_requests (user_id, plan_name, status) VALUES (?, ?, 'pending')",
                 (user_id, plan_name)
             )
-            # ثبت تراکنش
-            await db.execute(
-                "INSERT INTO transactions (user_id, amount, type, description, status) VALUES (?, ?, 'purchase', ?, 'completed')",
-                (user_id, price_int, f"خرید {plan_name}")
-            )
             await db.commit()
         
-        # ========== ارسال پیام موفقیت به کاربر ==========
         await callback.message.edit_text(
-            f"✅ درخواست شما برای سرویس {plan_name} ثبت شد!\n\n"
+            f"✅ درخواست شما ثبت شد!\n\n"
             f"📅 مدت: ۱ ماهه\n"
-            f"👤 تعداد کاربر: ۱ کاربره\n"
             f"📊 حجم: {volume}\n"
             f"💰 قیمت: {price_int:,} تومان\n"
             f"💰 موجودی جدید: {balance - price_int:,} تومان\n\n"
-            f"⏳ کانفیگ شما به زودی توسط ادمین ارسال خواهد شد."
+            f"⏳ کانفیگ به زودی ارسال میشه."
         )
         
-        # ========== ارسال نوتیفیکیشن به ادمین ==========
         await notify_admin_service(user_id, plan_name, price_int, volume)
         
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ خطا در ثبت درخواست:\n{str(e)}\n\n"
-            "لطفاً دوباره تلاش کن یا با پشتیبانی تماس بگیر."
-        )
+        await callback.message.edit_text(f"❌ خطا: {str(e)}")
 
 # ========== دکمه‌های بازگشت ==========
 @dp.callback_query(lambda c: c.data == "back_to_duration")
@@ -407,7 +421,7 @@ async def send_config(callback: CallbackQuery):
         result = await cursor.fetchone()
         
         if not result:
-            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
+            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده.")
             await callback.answer()
             return
         
@@ -415,7 +429,6 @@ async def send_config(callback: CallbackQuery):
     
     await callback.message.edit_text(
         f"📤 لطفاً کانفیگ را برای کاربر {user_id} ارسال کن:\n\n"
-        f"از دستور زیر استفاده کن:\n"
         f"`/send {user_id} [متن کانفیگ]`"
     )
     await callback.answer()
@@ -427,13 +440,11 @@ async def handle_charge_request(callback: CallbackQuery):
         await callback.answer("⛔ شما دسترسی ندارید.", show_alert=True)
         return
     
-    # استخراج شناسه درخواست و نوع عملیات
     parts = callback.data.split("_")
-    action = parts[0]  # approve یا reject
-    request_id = int(parts[2])  # شناسه درخواست
+    action = parts[0]
+    request_id = int(parts[2])
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # دریافت اطلاعات درخواست
         cursor = await db.execute(
             "SELECT user_id, amount FROM charge_requests WHERE id = ? AND status = 'pending'",
             (request_id,)
@@ -441,60 +452,51 @@ async def handle_charge_request(callback: CallbackQuery):
         request = await cursor.fetchone()
         
         if not request:
-            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده یا وجود ندارد.")
+            await callback.message.edit_text("❌ این درخواست قبلاً پردازش شده.")
             await callback.answer()
             return
         
         user_id, amount = request
         
         if action == "approve":
-            # تأیید: افزایش موجودی کاربر
-            await db.execute(
-                "UPDATE users SET balance = balance + ? WHERE id = ?",
-                (amount, user_id)
-            )
-            await db.execute(
-                "UPDATE charge_requests SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (request_id,)
-            )
-            await db.commit()
-            
-            # ارسال پیام به کاربر
             try:
+                await db.execute(
+                    "UPDATE users SET balance = balance + ? WHERE id = ?",
+                    (amount, user_id)
+                )
+                await db.execute(
+                    "UPDATE charge_requests SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (request_id,)
+                )
+                await db.commit()
+                
                 await bot.send_message(
                     user_id,
-                    f"✅ درخواست شارژ شما به مبلغ {amount:,} تومان تأیید شد!\n"
-                    f"💰 موجودی جدید شما: +{amount:,} تومان"
+                    f"✅ درخواست شارژ {amount:,} تومان تأیید شد!"
                 )
-            except:
-                pass
-            
-            await callback.message.edit_text(
-                f"✅ درخواست {request_id} تأیید شد.\n"
-                f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد."
-            )
-            
-        else:  # reject
+                
+                await callback.message.edit_text(
+                    f"✅ درخواست {request_id} تأیید شد.\n"
+                    f"👤 کاربر {user_id} به مبلغ {amount:,} تومان شارژ شد."
+                )
+                
+            except Exception as e:
+                await callback.message.edit_text(f"❌ خطا: {str(e)}")
+                await callback.answer()
+                return
+        else:
             await db.execute(
                 "UPDATE charge_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (request_id,)
             )
             await db.commit()
             
-            # ارسال پیام به کاربر
-            try:
-                await bot.send_message(
-                    user_id,
-                    f"❌ درخواست شارژ شما به مبلغ {amount:,} تومان رد شد.\n"
-                    f"در صورت نیاز با پشتیبانی تماس بگیرید."
-                )
-            except:
-                pass
-            
-            await callback.message.edit_text(
-                f"❌ درخواست {request_id} رد شد.\n"
-                f"👤 کاربر {user_id} از شارژ {amount:,} تومانی محروم شد."
+            await bot.send_message(
+                user_id,
+                f"❌ درخواست شارژ {amount:,} تومان رد شد."
             )
+            
+            await callback.message.edit_text(f"❌ درخواست {request_id} رد شد.")
     
     await callback.answer()
 
