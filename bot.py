@@ -114,10 +114,14 @@ async def support_command(message: Message):
 async def charge_command(message: Message, state: FSMContext):
     await state.set_state(ChargeStates.waiting_for_amount)
     await message.answer(
-        "💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
-        "مثلاً: 100000\n\n"
-        "🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان"
+        f"💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
+        f"مثلاً: 100000\n\n"
+        f"🔹 حداقل مبلغ: ۱۰,۰۰۰ تومان\n\n"
+        f"6219861801306746 دانیال بدری":\n"
+        f"`{config.CARD_NUMBER}`\n\n"  # <-- نمایش شماره کارت
+        f"⚠️ پس از واریز، حتماً عکس رسید را ارسال کنید."
     )
+    
 
 # ========== مدیریت دکمه‌های شیشه‌ای (ReplyKeyboard) ==========
 @dp.message(lambda message: message.text == "🛒 خرید اشتراک")
