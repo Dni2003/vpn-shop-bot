@@ -190,3 +190,76 @@ async def admin_service_requests(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
+
+# ========== مدیریت تراکنش‌ها ==========
+async def admin_transactions(callback: CallbackQuery):
+    """نمایش منوی مدیریت تراکنش‌ها"""
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="📋 همه تراکنش‌ها", callback_data="trans_all")],
+        [types.InlineKeyboardButton(text="💳 تراکنش‌های شارژ", callback_data="trans_deposit")],
+        [types.InlineKeyboardButton(text="🛒 تراکنش‌های خرید", callback_data="trans_purchase")],
+        [types.InlineKeyboardButton(text="🔍 جستجوی کاربر", callback_data="trans_search_user")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")]
+    ])
+    await callback.message.edit_text("💰 مدیریت تراکنش‌ها:\n\nیک گزینه را انتخاب کنید:", reply_markup=keyboard)
+    await callback.answer()
+
+async def show_transactions(callback: CallbackQuery, trans_type: str = None, user_id: int = None):
+    """نمایش لیست تراکنش‌ها با فیلتر"""
+    try:
+        query = "SELECT id, user_id, amount, type, description, status, created_at FROM transactions"
+        params = []
+        conditions = []
+        
+        if trans_type:
+            conditions.append("type = ?")
+            params.append(trans_type)
+        if user_id:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY created_at DESC LIMIT 20"
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(query, params)
+            transactions = await cursor.fetchall()
+        
+        if not transactions:
+            await callback.message.edit_text("📭 هیچ تراکنشی یافت نشد.")
+            await callback.answer()
+            return
+        
+        text = "📋 لیست تراکنش‌ها (۲۰ مورد آخر):\n\n"
+        for trans in transactions:
+            trans_id, user_id, amount, trans_type, desc, status, created_at = trans
+            local_time = to_tehran_time(created_at)
+            
+            # ایموجی بر اساس نوع
+            type_emoji = "💳" if trans_type == "deposit" else "🛒"
+            status_emoji = "✅" if status == "completed" else "⏳" if status == "pending" else "❌"
+            
+            text += f"{type_emoji} #{trans_id} | کاربر {user_id}\n"
+            text += f"   💰 {amount:,} تومان | {desc or '-'}\n"
+            text += f"   {status_emoji} {status} | 🕒 {local_time}\n"
+            text += "─" * 20 + "\n"
+        
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_transactions")]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        
+    except Exception as e:
+        await callback.message.edit_text(f"❌ خطا: {str(e)}")
+        await callback.answer()
+
+async def trans_search_user(callback: CallbackQuery):
+    """درخواست آیدی کاربر برای جستجو"""
+    await callback.message.edit_text(
+        "🔍 لطفاً آیدی کاربر را وارد کنید:\n"
+        "مثال: /search_trans 123456789"
+    )
+    await callback.answer()
