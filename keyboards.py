@@ -70,3 +70,8 @@ def admin_panel_keyboard():
             InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")
         ]
     ])
+# ========== دکمه بازگشت به منوی اصلی ==========
+def back_to_main_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")]
+    ])
