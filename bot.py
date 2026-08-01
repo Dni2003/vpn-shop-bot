@@ -251,8 +251,10 @@ async def balance_command(message: Message):
     await message.answer(
         f"💰 موجودی کیف پول شما:\n"
         f"{balance:,} تومان"
-        f"{service_text}"
+        f"{service_text}",
+        reply_markup=back_to_main_keyboard()  # <-- اضافه شد
     )
+
 
 @dp.message(Command("support"))
 async def support_command(message: Message, state: FSMContext):
