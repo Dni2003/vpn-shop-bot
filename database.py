@@ -116,6 +116,17 @@ async def init_db():
             )
         """)
         
+        # ========== جدول پاسخ‌های پشتیبانی (جدید) ==========
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS support_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_message_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
         # ========== درج تنظیمات پیش‌فرض ==========
         default_settings = [
             ("min_charge_amount", "100000"),
