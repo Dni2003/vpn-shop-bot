@@ -79,11 +79,7 @@ async def init_db():
             )
         """)
         
-        # ============================================================
-        # 🔽 کدهای جدید را از اینجا اضافه کن 🔽
-        # ============================================================
-        
-        # ========== جدول کدهای تخفیف (جدید) ==========
+        # ========== جدول کدهای تخفیف ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS discount_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +94,7 @@ async def init_db():
             )
         """)
         
-        # ========== جدول استفاده از تخفیف‌ها (جدید) ==========
+        # ========== جدول استفاده از تخفیف‌ها ==========
         await db.execute("""
             CREATE TABLE IF NOT EXISTS discount_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,15 +106,35 @@ async def init_db():
             )
         """)
         
-        # ============================================================
-        # 🔼 کدهای جدید تا اینجا 🔼
-        # ============================================================
+        # ========== جدول تنظیمات ربات ==========
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                setting_key TEXT UNIQUE NOT NULL,
+                setting_value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # ========== درج تنظیمات پیش‌فرض ==========
+        default_settings = [
+            ("min_charge_amount", "100000"),
+            ("welcome_message", "👋 سلام {first_name}!\nبه ربات خرید فیلترشکن خوش آمدید ❗️\nجهت خرید فیلترشکن از دکمه‌های زیر استفاده کنید:"),
+            ("support_username", "Dni2003"),
+            ("support_hours", "۹ صبح تا ۱۲ شب"),
+            ("plans", "150000,239000,300000,339000,425000,540000,550000,840000"),
+            ("plan_volumes", "20,28,50,53,75,90,100,213"),
+        ]
+        
+        for key, value in default_settings:
+            await db.execute(
+                "INSERT OR IGNORE INTO bot_settings (setting_key, setting_value) VALUES (?, ?)",
+                (key, value)
+            )
         
         await db.commit()
         print("✅ تمام جدول‌های دیتابیس با موفقیت ایجاد/بررسی شدند.")
 
 async def get_db():
-    """این تابع هر بار که صدا زده می‌شود، یک اتصال تازه و جدید به دیتابیس برمی‌گرداند.
-    برای استفاده از آن حتماً باید از 'async with await get_db() as db' استفاده کنید.
-    """
+    """هر بار یک اتصال جدید و تازه به دیتابیس برمی‌گرداند"""
     return await aiosqlite.connect(DB_PATH)
