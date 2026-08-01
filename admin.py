@@ -5,10 +5,6 @@ from aiogram.fsm.context import FSMContext
 from config import config
 from datetime import datetime, timedelta
 
-# ========== Import State classes ==========
-from broadcast_states import BroadcastStates
-from discount_states import DiscountStates
-
 DB_PATH = config.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
 
 # ========== تابع تبدیل زمان به ایران ==========
@@ -32,10 +28,15 @@ async def admin_panel(message: Message):
         return
     
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="👥 کاربران", callback_data="admin_users")],
-        [types.InlineKeyboardButton(text="💰 تراکنش‌ها", callback_data="admin_transactions")],
-        [types.InlineKeyboardButton(text="📊 آمار", callback_data="admin_stats")],
-        [types.InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")]
+        [types.InlineKeyboardButton(text="👥 مدیریت کاربران", callback_data="admin_users")],
+        [types.InlineKeyboardButton(text="📊 آمار فروش", callback_data="admin_stats")],
+        [types.InlineKeyboardButton(text="💰 مدیریت تراکنش‌ها", callback_data="admin_transactions")],
+        [types.InlineKeyboardButton(text="➕ شارژ کاربر", callback_data="admin_add_balance")],
+        [types.InlineKeyboardButton(text="📩 درخواست‌های شارژ", callback_data="admin_charge_requests")],
+        [types.InlineKeyboardButton(text="📩 درخواست‌های سرویس", callback_data="admin_service_requests")],
+        [types.InlineKeyboardButton(text="📨 ارسال پیام گروهی", callback_data="admin_broadcast")],
+        [types.InlineKeyboardButton(text="🎟 مدیریت تخفیف‌ها", callback_data="admin_discounts")],
+        [types.InlineKeyboardButton(text="⚙️ تنظیمات", callback_data="admin_settings")]
     ])
     await message.answer("👋 به پنل مدیریت خوش اومدی!", reply_markup=keyboard)
 
@@ -271,8 +272,8 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def broadcast_to_users(callback: CallbackQuery, state: FSMContext, filter_type: str):
-    """ذخیره فیلتر و شروع فرآیند ارسال پیام"""
     await state.update_data(filter_type=filter_type)
+    from broadcast_states import BroadcastStates
     await state.set_state(BroadcastStates.waiting_for_text)
     await callback.message.edit_text(
         "✍️ لطفاً متن پیام را ارسال کنید.\n"
@@ -280,7 +281,7 @@ async def broadcast_to_users(callback: CallbackQuery, state: FSMContext, filter_
     )
     await callback.answer()
 
-# ========== مدیریت تخفیف‌ها (روش ساده مرحله‌ای) ==========
+# ========== مدیریت تخفیف‌ها (روش ساده) ==========
 async def admin_discounts(callback: CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="➕ ایجاد کد تخفیف جدید", callback_data="discount_create_simple")],
@@ -295,7 +296,7 @@ async def admin_discounts(callback: CallbackQuery):
     await callback.answer()
 
 async def discount_create_simple(callback: CallbackQuery, state: FSMContext):
-    """مرحله ۱: دریافت کد تخفیف"""
+    from discount_states import DiscountStates
     await state.set_state(DiscountStates.waiting_for_code)
     await callback.message.edit_text(
         "🎟 مرحله ۱ از ۵:\n\n"
@@ -303,113 +304,6 @@ async def discount_create_simple(callback: CallbackQuery, state: FSMContext):
         "مثال: SUMMER10"
     )
     await callback.answer()
-
-async def discount_process_code(message: Message, state: FSMContext):
-    """مرحله ۲: دریافت نوع تخفیف"""
-    code = message.text.upper().strip()
-    await state.update_data(code=code)
-    await state.set_state(DiscountStates.waiting_for_type)
-    
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🔢 درصدی", callback_data="discount_type_percent")],
-        [types.InlineKeyboardButton(text="💰 مبلغ ثابت", callback_data="discount_type_fixed")]
-    ])
-    await message.answer(
-        f"🎟 مرحله ۲ از ۵:\n\n"
-        f"📝 کد: {code}\n\n"
-        "نوع تخفیف را انتخاب کنید:",
-        reply_markup=keyboard
-    )
-
-async def discount_process_type(callback: CallbackQuery, state: FSMContext):
-    """مرحله ۳: دریافت مقدار تخفیف"""
-    discount_type = callback.data.split("_")[2]  # percent یا fixed
-    await state.update_data(discount_type=discount_type)
-    await state.set_state(DiscountStates.waiting_for_value)
-    
-    type_text = "درصد" if discount_type == "percent" else "تومان"
-    await callback.message.edit_text(
-        f"🎟 مرحله ۳ از ۵:\n\n"
-        f"📝 نوع: {type_text}\n\n"
-        f"💰 مقدار تخفیف را به {type_text} وارد کنید:\n"
-        f"{'مثال: 10 (برای ۱۰%)' if discount_type == 'percent' else 'مثال: 50000 (برای ۵۰,۰۰۰ تومان)'}"
-    )
-    await callback.answer()
-
-async def discount_process_value(message: Message, state: FSMContext):
-    """مرحله ۴: دریافت تعداد استفاده"""
-    try:
-        value = int(message.text)
-        data = await state.get_data()
-        if data.get("discount_type") == "percent" and value > 100:
-            await message.answer("❌ تخفیف درصدی نمی‌تواند بیشتر از ۱۰۰ باشد. لطفاً مجدداً وارد کنید.")
-            return
-        await state.update_data(value=value)
-        await state.set_state(DiscountStates.waiting_for_max_uses)
-        await message.answer(
-            f"🎟 مرحله ۴ از ۵:\n\n"
-            f"📝 مقدار: {value}\n\n"
-            f"📌 تعداد دفعاتی که این کد قابل استفاده است را وارد کنید:\n"
-            f"مثال: 5 (یعنی ۵ نفر می‌توانند استفاده کنند)"
-        )
-    except ValueError:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
-
-async def discount_process_max_uses(message: Message, state: FSMContext):
-    """مرحله ۵: دریافت روزهای اعتبار"""
-    try:
-        max_uses = int(message.text)
-        await state.update_data(max_uses=max_uses)
-        await state.set_state(DiscountStates.waiting_for_days)
-        await message.answer(
-            f"🎟 مرحله ۵ از ۵ (آخرین مرحله):\n\n"
-            f"📌 تعداد استفاده: {max_uses}\n\n"
-            f"📅 تعداد روزهای اعتبار کد را وارد کنید:\n"
-            f"مثال: 30 (یعنی ۳۰ روز اعتبار دارد)\n"
-            f"💡 عدد ۰ به معنای نامحدود است."
-        )
-    except ValueError:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
-
-async def discount_process_days(message: Message, state: FSMContext):
-    """مرحله نهایی: ایجاد کد تخفیف"""
-    try:
-        days = int(message.text)
-        data = await state.get_data()
-        code = data.get("code")
-        discount_type = data.get("discount_type")
-        value = data.get("value")
-        max_uses = data.get("max_uses")
-        
-        expires_at = None
-        if days > 0:
-            expires_at = (datetime.now() + timedelta(days=days)).isoformat()
-        
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "INSERT INTO discount_codes (code, discount_type, discount_value, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (code, discount_type, value, max_uses, expires_at)
-            )
-            await db.commit()
-        
-        type_text = "درصد" if discount_type == "percent" else "مبلغ ثابت"
-        await message.answer(
-            f"✅ کد تخفیف با موفقیت ایجاد شد!\n\n"
-            f"🎟 کد: {code}\n"
-            f"📊 نوع: {type_text}\n"
-            f"💰 مقدار: {value} {'' if discount_type == 'percent' else 'تومان'}\n"
-            f"📌 تعداد استفاده: {max_uses}\n"
-            f"📅 انقضا: {expires_at or 'نامحدود'}"
-        )
-        await state.clear()
-        
-    except aiosqlite.IntegrityError:
-        await message.answer("❌ این کد قبلاً استفاده شده است. لطفاً کد دیگری وارد کنید.")
-    except ValueError:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
-    except Exception as e:
-        await message.answer(f"❌ خطا: {str(e)}")
-        await state.clear()
 
 async def discount_list(callback: CallbackQuery):
     try:
@@ -444,3 +338,99 @@ async def discount_list(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ خطا: {str(e)}")
         await callback.answer()
+
+# ========== تنظیمات ربات ==========
+async def admin_settings(callback: CallbackQuery):
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="📝 ویرایش پیام خوش‌آمدگویی", callback_data="settings_welcome")],
+        [types.InlineKeyboardButton(text="💳 حداقل مبلغ شارژ", callback_data="settings_min_charge")],
+        [types.InlineKeyboardButton(text="📞 اطلاعات پشتیبانی", callback_data="settings_support")],
+        [types.InlineKeyboardButton(text="📦 مدیریت تعرفه‌ها", callback_data="settings_plans")],
+        [types.InlineKeyboardButton(text="📊 مشاهده تنظیمات فعلی", callback_data="settings_view")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_admin")]
+    ])
+    await callback.message.edit_text(
+        "⚙️ تنظیمات ربات:\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کنید:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+async def settings_view(callback: CallbackQuery):
+    """نمایش تنظیمات فعلی"""
+    from settings_manager import get_all_settings
+    settings = await get_all_settings()
+    
+    text = "📋 تنظیمات فعلی ربات:\n\n"
+    text += f"💰 حداقل مبلغ شارژ: {settings.get('min_charge_amount', 'تعیین نشده')} تومان\n"
+    text += f"📞 ادمین پشتیبانی: @{settings.get('support_username', 'تعیین نشده')}\n"
+    text += f"⏰ ساعت پشتیبانی: {settings.get('support_hours', 'تعیین نشده')}\n"
+    text += f"📦 تعرفه‌ها: {settings.get('plans', 'تعیین نشده')}\n"
+    text += f"📊 حجم‌ها: {settings.get('plan_volumes', 'تعیین نشده')}\n"
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_settings")]
+    ])
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+async def settings_min_charge(callback: CallbackQuery):
+    """تغییر حداقل مبلغ شارژ"""
+    await callback.message.edit_text(
+        "💰 تغییر حداقل مبلغ شارژ:\n\n"
+        "لطفاً مبلغ جدید را به تومان وارد کنید:\n"
+        "مثال: 50000\n\n"
+        "💡 برای انصراف، /cancel را وارد کنید."
+    )
+    await callback.answer()
+
+async def settings_welcome(callback: CallbackQuery):
+    """تغییر پیام خوش‌آمدگویی"""
+    await callback.message.edit_text(
+        "📝 تغییر پیام خوش‌آمدگویی:\n\n"
+        "لطفاً متن جدید را وارد کنید.\n"
+        "می‌توانید از {first_name} برای نمایش نام کاربر استفاده کنید.\n\n"
+        "💡 برای انصراف، /cancel را وارد کنید."
+    )
+    await callback.answer()
+
+async def settings_support(callback: CallbackQuery):
+    """تغییر اطلاعات پشتیبانی"""
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🆔 تغییر ادمین", callback_data="settings_support_user")],
+        [types.InlineKeyboardButton(text="⏰ تغییر ساعت پشتیبانی", callback_data="settings_support_hours")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_settings")]
+    ])
+    await callback.message.edit_text(
+        "📞 تنظیمات پشتیبانی:\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کنید:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+async def settings_plans(callback: CallbackQuery):
+    """مدیریت تعرفه‌ها"""
+    from settings_manager import get_setting
+    plans = await get_setting("plans")
+    volumes = await get_setting("plan_volumes")
+    
+    plans_list = plans.split(",") if plans else []
+    volumes_list = volumes.split(",") if volumes else []
+    
+    text = "📦 مدیریت تعرفه‌ها:\n\n"
+    if plans_list and volumes_list:
+        for i, (p, v) in enumerate(zip(plans_list, volumes_list), 1):
+            text += f"{i}. {int(p):,} تومان - {v}GB\n"
+    else:
+        text += "هیچ تعرفه‌ای تنظیم نشده است.\n"
+    
+    text += "\nبرای تغییر، یکی از گزینه‌های زیر را انتخاب کنید:"
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="➕ اضافه کردن تعرفه جدید", callback_data="settings_plan_add")],
+        [types.InlineKeyboardButton(text="✏️ ویرایش تعرفه", callback_data="settings_plan_edit")],
+        [types.InlineKeyboardButton(text="🗑 حذف تعرفه", callback_data="settings_plan_delete")],
+        [types.InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_settings")]
+    ])
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
