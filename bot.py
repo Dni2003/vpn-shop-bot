@@ -261,7 +261,8 @@ async def support_command(message: Message, state: FSMContext):
     await state.set_state(SupportStates.waiting_for_message)
     await message.answer(
         "📩 لطفاً پیام خود را برای پشتیبانی ارسال کنید.\n"
-        "پس از ارسال، پیام شما به ادمین ارسال خواهد شد."
+        "پس از ارسال، پیام شما به ادمین ارسال خواهد شد.",
+        reply_markup=back_to_main_keyboard()  # <-- اضافه شد
     )
 
 @dp.message(Command("charge"))
@@ -271,7 +272,8 @@ async def charge_command(message: Message, state: FSMContext):
     await message.answer(
         f"💳 لطفاً مبلغ شارژ خود را به تومان وارد کنید:\n"
         f"مثلاً: 100000\n\n"
-        f"🔹 حداقل مبلغ: {int(min_charge):,} تومان"
+        f"🔹 حداقل مبلغ: {int(min_charge):,} تومان",
+        reply_markup=back_to_main_keyboard()  # <-- اضافه شد
     )
 
 @dp.message(Command("my_services"))
@@ -286,7 +288,10 @@ async def my_services_command(message: Message):
         services = await cursor.fetchall()
     
     if not services:
-        await message.answer("📭 شما هیچ سرویس فعال یا قبلی ندارید.")
+        await message.answer(
+            "📭 شما هیچ سرویس فعال یا قبلی ندارید.",
+            reply_markup=back_to_main_keyboard()  # <-- اضافه شد
+        )
         return
     
     text = "📦 لیست سرویس‌های شما (۵ مورد آخر):\n\n"
@@ -317,7 +322,10 @@ async def my_services_command(message: Message):
         text += f"   🕒 انقضا: {expires_at or 'نامشخص'}\n"
         text += "─" * 20 + "\n"
     
-    await message.answer(text)
+    await message.answer(
+        text,
+        reply_markup=back_to_main_keyboard()  # <-- اضافه شد
+)
 
 # ========== دستورات ادمین ==========
 @dp.message(Command("add_balance"))
