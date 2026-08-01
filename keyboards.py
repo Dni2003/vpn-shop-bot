@@ -1,21 +1,25 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ========== منوی اصلی (یک ستون - بدون ایموجی) ==========
+# ========== منوی اصلی (چیدمان سفارشی) ==========
 def main_menu_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="خرید سرویس", callback_data="menu_buy")],
-        [InlineKeyboardButton(text="سرویس های من", callback_data="menu_services")],
-        [InlineKeyboardButton(text="حساب کاربری", callback_data="menu_account")],
-        [InlineKeyboardButton(text="پشتیبانی", callback_data="menu_support")],
-        [InlineKeyboardButton(text="افزایش موجودی", callback_data="menu_charge")],
-        [InlineKeyboardButton(text="بستن", callback_data="menu_close")]
+        [InlineKeyboardButton(text="خرید سرویس", callback_data="menu_buy")],  # ردیف اول: یک دکمه کامل
+        [
+            InlineKeyboardButton(text="حساب کاربری", callback_data="menu_account"),
+            InlineKeyboardButton(text="سرویس‌های من", callback_data="menu_services")
+        ],  # ردیف دوم: دو دکمه
+        [
+            InlineKeyboardButton(text="پشتیبانی", callback_data="menu_support"),
+            InlineKeyboardButton(text="افزایش موجودی", callback_data="menu_charge")
+        ],  # ردیف سوم: دو دکمه
+        [InlineKeyboardButton(text="بستن", callback_data="menu_close")]  # ردیف چهارم: یک دکمه کامل
     ])
     return keyboard
 
 # ========== سطح اول: انتخاب مدت (با ایموجی) ==========
 def buy_main_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 1 ماهه", callback_data="select_duration_1m")],
+        [InlineKeyboardButton(text="📅 ۱ ماهه", callback_data="select_duration_1m")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")]
     ])
     return keyboard
@@ -23,7 +27,7 @@ def buy_main_keyboard():
 # ========== سطح دوم: انتخاب تعداد کاربر (با ایموجی) ==========
 def buy_user_count_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 1 کاربره", callback_data="select_user_1")],
+        [InlineKeyboardButton(text="👤 ۱ کاربره", callback_data="select_user_1")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_duration")]
     ])
     return keyboard
@@ -31,14 +35,14 @@ def buy_user_count_keyboard():
 # ========== سطح سوم: لیست تعرفه‌ها (با ایموجی) ==========
 def buy_plans_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 ۱۵۰,۰۰۰ تومان (20GB)", callback_data="buy_1m_150k_20gb")],
-        [InlineKeyboardButton(text="📦 ۲۳۹,۰۰۰ تومان (28GB)", callback_data="buy_1m_239k_28gb")],
-        [InlineKeyboardButton(text="📦 ۳۰۰,۰۰۰ تومان (50GB)", callback_data="buy_1m_300k_50gb")],
-        [InlineKeyboardButton(text="📦 ۳۳۹,۰۰۰ تومان (53GB)", callback_data="buy_1m_339k_53gb")],
-        [InlineKeyboardButton(text="📦 ۴۲۵,۰۰۰ تومان (75GB)", callback_data="buy_1m_425k_75gb")],
-        [InlineKeyboardButton(text="📦 ۵۴۰,۰۰۰ تومان (90GB)", callback_data="buy_1m_540k_90gb")],
-        [InlineKeyboardButton(text="📦 ۵۵۰,۰۰۰ تومان (100GB)", callback_data="buy_1m_550k_100gb")],
-        [InlineKeyboardButton(text="📦 ۸۴۰,۰۰۰ تومان (213GB)", callback_data="buy_1m_840k_213gb")],
+        [InlineKeyboardButton(text="📦 ۱۵۰,۰۰۰ تومان (۲۰GB)", callback_data="buy_1m_150k_20gb")],
+        [InlineKeyboardButton(text="📦 ۲۳۹,۰۰۰ تومان (۲۸GB)", callback_data="buy_1m_239k_28gb")],
+        [InlineKeyboardButton(text="📦 ۳۰۰,۰۰۰ تومان (۵۰GB)", callback_data="buy_1m_300k_50gb")],
+        [InlineKeyboardButton(text="📦 ۳۳۹,۰۰۰ تومان (۵۳GB)", callback_data="buy_1m_339k_53gb")],
+        [InlineKeyboardButton(text="📦 ۴۲۵,۰۰۰ تومان (۷۵GB)", callback_data="buy_1m_425k_75gb")],
+        [InlineKeyboardButton(text="📦 ۵۴۰,۰۰۰ تومان (۹۰GB)", callback_data="buy_1m_540k_90gb")],
+        [InlineKeyboardButton(text="📦 ۵۵۰,۰۰۰ تومان (۱۰۰GB)", callback_data="buy_1m_550k_100gb")],
+        [InlineKeyboardButton(text="📦 ۸۴۰,۰۰۰ تومان (۲۱۳GB)", callback_data="buy_1m_840k_213gb")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_user_count")]
     ])
     return keyboard
