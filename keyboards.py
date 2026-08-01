@@ -3,16 +3,16 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ========== منوی اصلی (چیدمان سفارشی) ==========
 def main_menu_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="خرید سرویس", callback_data="menu_buy")],  # ردیف اول: یک دکمه کامل
+        [InlineKeyboardButton(text="خرید سرویس", callback_data="menu_buy")],
         [
             InlineKeyboardButton(text="حساب کاربری", callback_data="menu_account"),
             InlineKeyboardButton(text="سرویس‌های من", callback_data="menu_services")
-        ],  # ردیف دوم: دو دکمه
+        ],
         [
             InlineKeyboardButton(text="پشتیبانی", callback_data="menu_support"),
             InlineKeyboardButton(text="افزایش موجودی", callback_data="menu_charge")
-        ],  # ردیف سوم: دو دکمه
-        [InlineKeyboardButton(text="بستن", callback_data="menu_close")]  # ردیف چهارم: یک دکمه کامل
+        ],
+        [InlineKeyboardButton(text="بستن", callback_data="menu_close")]
     ])
     return keyboard
 
