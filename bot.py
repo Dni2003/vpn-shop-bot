@@ -935,14 +935,23 @@ async def back_to_user_count(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "back_to_main")
 async def back_to_main_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    # حذف پیام فعلی
+    
+    # مرحله 1: کیبورد فعلی را حذف کنید
+    await callback.message.answer(
+        "🔄 در حال بازگشت...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    # مرحله 2: پیام قبلی را حذف کنید
     await callback.message.delete()
-    # ارسال پیام جدید با کیبورد اصلی
-    await asyncio.sleep(0.1)  # تأخیر ۰.۱ ثانیه برای حذف کامل پیام قبلی
+    
+    # مرحله 3: یک پیام جدید با کیبورد اصلی ارسال کنید
+    await asyncio.sleep(0.3)
     await callback.message.answer(
         "🔙 به منوی اصلی برگشتید.",
         reply_markup=main_menu_keyboard()
     )
+    
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "back_to_admin")
@@ -953,6 +962,7 @@ async def back_to_admin(callback: CallbackQuery):
         reply_markup=admin_panel_keyboard()
     )
     await callback.answer()
+
 
 # ========== مدیریت درخواست‌های سرویس (ادمین) ==========
 @dp.callback_query(lambda c: c.data.startswith("send_config_"))
