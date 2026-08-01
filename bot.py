@@ -492,18 +492,76 @@ async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
 async def process_support_message(message: Message, state: FSMContext):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
+    username = message.from_user.username or "بدون نام کاربری"
     
-    # ارسال پیام کاربر به ادمین
+    # پیام ارسال به ادمین
     for admin_id in config.ADMIN_IDS:
         try:
-            sent_msg = await bot.send_message(
-                admin_id,
-                f"📩 پیام جدید از {user_name} (ID: {user_id}):\n\n{message.text}"
-            )
-            # ذخیره ارتباط بین پیام ادمین و کاربر
-            await save_admin_reply(sent_msg.message_id, user_id)
-        except:
-            pass
+            # ارسال پیام با محتوای مناسب
+            if message.text:
+                sent_msg = await bot.send_message(
+                    admin_id,
+                    f"📩 پیام جدید از {user_name} (@{username}) [ID: {user_id}]:\n\n{message.text}"
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+            
+            elif message.photo:
+                # ارسال عکس با کپشن
+                caption = f"📸 عکس از {user_name} (@{username}) [ID: {user_id}]"
+                if message.caption:
+                    caption += f"\n\n📝 متن: {message.caption}"
+                sent_msg = await bot.send_photo(
+                    admin_id,
+                    message.photo[-1].file_id,
+                    caption=caption
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+            
+            elif message.video:
+                caption = f"🎥 ویدئو از {user_name} (@{username}) [ID: {user_id}]"
+                if message.caption:
+                    caption += f"\n\n📝 متن: {message.caption}"
+                sent_msg = await bot.send_video(
+                    admin_id,
+                    message.video.file_id,
+                    caption=caption
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+            
+            elif message.document:
+                caption = f"📄 فایل از {user_name} (@{username}) [ID: {user_id}]"
+                if message.caption:
+                    caption += f"\n\n📝 متن: {message.caption}"
+                sent_msg = await bot.send_document(
+                    admin_id,
+                    message.document.file_id,
+                    caption=caption
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+            
+            elif message.audio or message.voice:
+                caption = f"🎵 فایل صوتی از {user_name} (@{username}) [ID: {user_id}]"
+                if message.caption:
+                    caption += f"\n\n📝 متن: {message.caption}"
+                file_id = message.audio.file_id if message.audio else message.voice.file_id
+                sent_msg = await bot.send_audio(
+                    admin_id,
+                    file_id,
+                    caption=caption
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+            
+            else:
+                # سایر محتواها (استیکر، ایموجی و ...)
+                sent_msg = await bot.send_message(
+                    admin_id,
+                    f"📩 پیام جدید از {user_name} (@{username}) [ID: {user_id}]:\n\n"
+                    f"(نوع پیام قابل نمایش نیست، لطفاً در تلگرام مشاهده کنید)"
+                )
+                await save_admin_reply(sent_msg.message_id, user_id)
+                
+        except Exception as e:
+            logger.error(f"❌ خطا در ارسال پیام به ادمین: {e}")
     
     await message.answer("✅ پیام شما به ادمین ارسال شد.\n⏳ منتظر پاسخ باشید.")
     await state.clear()
