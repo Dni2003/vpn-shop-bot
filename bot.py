@@ -587,15 +587,81 @@ async def handle_admin_reply(message: Message):
         await message.answer("⚠️ این پیام قابل پاسخگویی نیست.")
         return
     
-    # ارسال پاسخ به کاربر
     try:
-        await bot.send_message(
-            user_id,
-            f"📨 پاسخ پشتیبانی:\n\n{message.text}"
-        )
+        # ========== ارسال پاسخ به کاربر بر اساس نوع محتوا ==========
+        if message.text:
+            await bot.send_message(
+                user_id,
+                f"📨 پاسخ پشتیبانی:\n\n{message.text}"
+            )
+        
+        elif message.photo:
+            caption = f"📨 پاسخ پشتیبانی"
+            if message.caption:
+                caption += f":\n\n{message.caption}"
+            await bot.send_photo(
+                user_id,
+                message.photo[-1].file_id,
+                caption=caption
+            )
+        
+        elif message.video:
+            caption = f"📨 پاسخ پشتیبانی"
+            if message.caption:
+                caption += f":\n\n{message.caption}"
+            await bot.send_video(
+                user_id,
+                message.video.file_id,
+                caption=caption
+            )
+        
+        elif message.document:
+            caption = f"📨 پاسخ پشتیبانی"
+            if message.caption:
+                caption += f":\n\n{message.caption}"
+            await bot.send_document(
+                user_id,
+                message.document.file_id,
+                caption=caption
+            )
+        
+        elif message.audio:
+            caption = f"📨 پاسخ پشتیبانی"
+            if message.caption:
+                caption += f":\n\n{message.caption}"
+            await bot.send_audio(
+                user_id,
+                message.audio.file_id,
+                caption=caption
+            )
+        
+        elif message.voice:
+            caption = f"📨 پاسخ پشتیبانی"
+            if message.caption:
+                caption += f":\n\n{message.caption}"
+            await bot.send_voice(
+                user_id,
+                message.voice.file_id,
+                caption=caption
+            )
+        
+        elif message.sticker:
+            await bot.send_sticker(
+                user_id,
+                message.sticker.file_id
+            )
+        
+        else:
+            await bot.send_message(
+                user_id,
+                f"📨 پاسخ پشتیبانی:\n\n(نوع پیام قابل نمایش نیست، لطفاً در تلگرام مشاهده کنید)"
+            )
+        
         await message.answer(f"✅ پاسخ به کاربر {user_id} ارسال شد.")
+        
     except Exception as e:
         await message.answer(f"❌ خطا در ارسال پاسخ: {str(e)}")
+
 
 # ========== سیستم شارژ کیف پول (FSM) ==========
 @dp.message(ChargeStates.waiting_for_amount)
